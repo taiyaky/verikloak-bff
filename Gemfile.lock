@@ -3,7 +3,7 @@ PATH
   specs:
     verikloak-bff (0.1.0)
       jwt (~> 2.7)
-      rack (>= 2.2)
+      rack (>= 2.2, < 4.0)
       verikloak (>= 0.1.2, < 0.2)
 
 GEM
@@ -97,6 +97,7 @@ GEM
 PLATFORMS
   aarch64-linux-musl
   arm64-darwin-23
+  x86_64-linux-musl
 
 DEPENDENCIES
   bundler-audit
