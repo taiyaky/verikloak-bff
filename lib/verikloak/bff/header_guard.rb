@@ -14,6 +14,7 @@ require 'rack'
 require 'rack/utils'
 require 'json'
 require 'jwt'
+require 'digest'
 require 'verikloak/bff/configuration'
 require 'verikloak/bff/errors'
 require 'verikloak/bff/proxy_trust'
@@ -201,7 +202,9 @@ module Verikloak
       def enforce_header_consistency!(env, auth_token, fwd_token)
         return unless @config.enforce_header_consistency
         return unless auth_token && fwd_token
-        return if Rack::Utils.secure_compare(auth_token, fwd_token)
+        digest_a = ::Digest::SHA256.hexdigest(auth_token)
+        digest_b = ::Digest::SHA256.hexdigest(fwd_token)
+        return if Rack::Utils.secure_compare(digest_a, digest_b)
 
         log_event(env, :mismatch, reason: 'authorization_vs_forwarded')
         raise HeaderMismatchError
