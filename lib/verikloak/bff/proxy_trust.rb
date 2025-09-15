@@ -23,7 +23,7 @@ module Verikloak
       # @example CIDR + Regex allowlist
       #   ProxyTrust.trusted?(env, ["10.0.0.0/8", /^192\.168\./], :rightmost)
       def trusted?(env, trusted, strategy = :rightmost)
-        return true if trusted.nil? || trusted.empty?
+        return false if trusted.nil? || trusted.empty?
 
         # Rails-aligned: prefer REMOTE_ADDR; fallback to nearest XFF entry
         remote = (env['REMOTE_ADDR'] || '').to_s.strip
@@ -108,7 +108,7 @@ module Verikloak
       # @param trusted [Array<String, Regexp, Proc>, nil]
       # @return [Boolean]
       def self.from_trusted_proxy?(env, trusted)
-        return true if trusted.nil? || trusted.empty?
+        return false if trusted.nil? || trusted.empty?
 
         ip = (env['REMOTE_ADDR'] || '').to_s.strip
         ip = env['HTTP_X_FORWARDED_FOR'].to_s.split(',').last.to_s.strip if ip.empty? && env['HTTP_X_FORWARDED_FOR']

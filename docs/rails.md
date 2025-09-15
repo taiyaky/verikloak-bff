@@ -55,6 +55,8 @@ Verikloak::BFF.configure do |c|
 end
 ```
 
+`trusted_proxies` must not be left empty; the middleware raises an error when no allowlist is provided.
+
 ## 3) Reverse proxy examples
 
 Nginx auth_request:

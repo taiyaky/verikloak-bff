@@ -11,6 +11,7 @@
 # headers against JWT claims, and normalizes the request into
 # `HTTP_AUTHORIZATION: Bearer <token>` for the downstream verifier.
 require 'rack'
+require 'rack/utils'
 require 'json'
 require 'jwt'
 require 'verikloak/bff/configuration'
@@ -38,6 +39,10 @@ module Verikloak
         combined.merge!(opts) if opts.is_a?(Hash)
         combined.merge!(opts_kw) if opts_kw && !opts_kw.empty?
         apply_overrides!(combined)
+
+        if @config.trusted_proxies.nil? || @config.trusted_proxies.empty?
+          raise ArgumentError, 'trusted_proxies must be configured'
+        end
       end
 
       # Process a Rack request.
@@ -121,21 +126,14 @@ module Verikloak
       #
       # @param token [String]
       # @return [Array(Hash, Hash)] [payload, header]
-      def decode_unverified(token)
-        parts = token.to_s.split('.')
-        return [{}, {}] unless parts.size >= 2
+      MAX_TOKEN_BYTES = 4096
 
-        payload = begin
-          JSON.parse(::JWT::Base64.url_decode(parts[1]))
-        rescue StandardError
-          {}
-        end
-        header = begin
-          JSON.parse(::JWT::Base64.url_decode(parts[0]))
-        rescue StandardError
-          {}
-        end
-        [payload, header]
+      def decode_unverified(token)
+        return [{}, {}] if token.nil? || token.bytesize > MAX_TOKEN_BYTES
+
+        JWT.decode(token, nil, false)
+      rescue StandardError
+        [{}, {}]
       end
 
       # Extract request id for logging from common headers.
@@ -203,7 +201,7 @@ module Verikloak
       def enforce_header_consistency!(env, auth_token, fwd_token)
         return unless @config.enforce_header_consistency
         return unless auth_token && fwd_token
-        return if auth_token == fwd_token
+        return if Rack::Utils.secure_compare(auth_token, fwd_token)
 
         log_event(env, :mismatch, reason: 'authorization_vs_forwarded')
         raise HeaderMismatchError

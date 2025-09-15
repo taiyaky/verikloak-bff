@@ -19,14 +19,13 @@ module Verikloak
       #
       # @param token [String, nil]
       # @return [Hash] claims or empty hash on error
+      MAX_TOKEN_BYTES = 4096
+
       def decode_claims(token)
         return {} unless token
+        return {} if token.bytesize > MAX_TOKEN_BYTES
 
-        parts = token.split('.')
-        return {} unless parts.size >= 2
-
-        payload = JWT::Base64.url_decode(parts[1])
-        JSON.parse(payload)
+        JWT.decode(token, nil, false).first
       rescue StandardError
         {}
       end

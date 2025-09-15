@@ -40,6 +40,14 @@ RSpec.describe Verikloak::BFF::HeaderGuard do
     expect(last_request.env["HTTP_AUTHORIZATION"]).to eq "Bearer fwdtoken"
   end
 
+  it "sanitizes control characters before writing Authorization" do
+    header "X-Forwarded-For", "127.0.0.1"
+    header "X-Forwarded-Access-Token", "Bearer tok\r\nmal"
+    get "/"
+    expect(last_response.status).to eq 200
+    expect(last_request.env["HTTP_AUTHORIZATION"]).to eq "Bearer tokmal"
+  end
+
   it "rejects when both headers present and mismatch" do
     header "X-Forwarded-For", "127.0.0.1"
     header "X-Forwarded-Access-Token", "Bearer fwd"
@@ -50,6 +58,10 @@ RSpec.describe Verikloak::BFF::HeaderGuard do
   end
 
   context "trust boundary" do
+    it "requires trusted_proxies configuration" do
+      expect { build_app }.to raise_error(ArgumentError)
+    end
+
     it "rejects requests from untrusted proxy" do
       @app = build_app(trusted_proxies: ["127.0.0.1"], prefer_forwarded: true)
       header "X-Forwarded-For", "203.0.113.10"
