@@ -20,6 +20,7 @@ require 'verikloak/bff/errors'
 require 'verikloak/bff/proxy_trust'
 require 'verikloak/bff/forwarded_token'
 require 'verikloak/bff/consistency_checks'
+require 'verikloak/bff/constants'
 
 module Verikloak
   module BFF
@@ -41,9 +42,9 @@ module Verikloak
         combined.merge!(opts_kw) if opts_kw && !opts_kw.empty?
         apply_overrides!(combined)
 
-        if @config.trusted_proxies.nil? || @config.trusted_proxies.empty?
-          raise ArgumentError, 'trusted_proxies must be configured'
-        end
+        return unless @config.trusted_proxies.nil? || @config.trusted_proxies.empty?
+
+        raise ArgumentError, 'trusted_proxies must be configured'
       end
 
       # Process a Rack request.
@@ -127,10 +128,9 @@ module Verikloak
       #
       # @param token [String]
       # @return [Array(Hash, Hash)] [payload, header]
-      MAX_TOKEN_BYTES = 4096
 
       def decode_unverified(token)
-        return [{}, {}] if token.nil? || token.bytesize > MAX_TOKEN_BYTES
+        return [{}, {}] if token.nil? || token.bytesize > Constants::MAX_TOKEN_BYTES
 
         JWT.decode(token, nil, false)
       rescue StandardError
@@ -202,6 +202,7 @@ module Verikloak
       def enforce_header_consistency!(env, auth_token, fwd_token)
         return unless @config.enforce_header_consistency
         return unless auth_token && fwd_token
+
         digest_a = ::Digest::SHA256.hexdigest(auth_token)
         digest_b = ::Digest::SHA256.hexdigest(fwd_token)
         return if Rack::Utils.secure_compare(digest_a, digest_b)

@@ -45,7 +45,7 @@ module Verikloak
         return nil unless raw
 
         token = raw.to_s.strip
-        return ::Regexp.last_match(1) if token =~ /^Bearer\s+(.+)$/i
+        token = token.sub(/^Bearer\s+/i, '') if token =~ /^Bearer\s+/i
 
         token.empty? ? nil : token
       end
