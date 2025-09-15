@@ -45,7 +45,7 @@ module Verikloak
         return nil unless raw
 
         token = raw.to_s.strip
-        return ::Regexp.last_match(1) if token =~ /^Bearer\s+(.+)$/i
+        token = token.sub(/^Bearer\s+/i, '') if token =~ /^Bearer\s+/i
 
         token.empty? ? nil : token
       end
@@ -57,7 +57,7 @@ module Verikloak
       # @param token [String]
       # @return [String]
       def ensure_bearer(token)
-        s = token.to_s.strip
+        s = sanitize(token)
         # Case-insensitive 'Bearer' with spaces/tabs after
         if s =~ /\ABearer[ \t]+/i
           rest = s.sub(/\ABearer[ \t]+/i, '')
@@ -84,6 +84,14 @@ module Verikloak
         return unless existing.empty? || normalize_auth(existing).nil?
 
         env[AUTH_HEADER] = ensure_bearer(token)
+      end
+
+      # Remove CRLF and other control characters to prevent header injection.
+      #
+      # @param token [String]
+      # @return [String]
+      def sanitize(token)
+        token.to_s.gsub(/[[:cntrl:]]/, '').strip
       end
 
       # Remove potentially forged X-Auth-Request-* headers before passing

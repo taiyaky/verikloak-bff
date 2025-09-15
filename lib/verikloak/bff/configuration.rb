@@ -53,10 +53,9 @@ module Verikloak
           groups: 'HTTP_X_AUTH_REQUEST_GROUPS'
         }
         # When Authorization is empty and no chosen token exists, try these env headers (in order)
-        # to seed Authorization, similar to verikloak-rails behavior. HTTP_AUTHORIZATION is ignored as a source.
+        # to seed Authorization, similar to verikloak-rails behavior. HTTP_AUTHORIZATION is always ignored as a source.
         @token_header_priority = %w[
           HTTP_X_FORWARDED_ACCESS_TOKEN
-          HTTP_AUTHORIZATION
         ]
       end
     end

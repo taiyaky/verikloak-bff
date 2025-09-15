@@ -2,7 +2,7 @@ PATH
   remote: .
   specs:
     verikloak-bff (0.1.0)
-      jwt (~> 2.7)
+      jwt (>= 2.7, < 4.0)
       rack (>= 2.2, < 4.0)
       verikloak (>= 0.1.2, < 0.2)
 

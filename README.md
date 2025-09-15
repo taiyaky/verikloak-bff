@@ -42,7 +42,7 @@ See `examples/rack.ru` for a tiny Rack app demo.
 
 | Key                          | Type                                 | Default      | Description |
 |----------------------------- |--------------------------------------|--------------|-------------|
-| `trusted_proxies`            | Array[String/Regexp/Proc]            | `[]`         | Allowlist for proxy peers (by IP/CIDR/regex/proc). |
+| `trusted_proxies`            | Array[String/Regexp/Proc]            | *(required)* | Allowlist for proxy peers (by IP/CIDR/regex/proc). |
 | `prefer_forwarded`           | Boolean                              | `true`       | Prefer `X-Forwarded-Access-Token` over `Authorization`. |
 | `require_forwarded_header`   | Boolean                              | `false`      | Reject when no `X-Forwarded-Access-Token` (blocks direct access). |
 | `enforce_header_consistency` | Boolean                              | `true`       | If both headers exist, require identical token values. |
@@ -52,7 +52,7 @@ See `examples/rack.ru` for a tiny Rack app demo.
 | `peer_preference`            | Symbol (`:remote_then_xff`/`:xff_only`) | `:remote_then_xff` | Whether to prefer `REMOTE_ADDR` before falling back to XFF. |
 | `clock_skew_leeway`          | Integer (seconds)                    | `30`         | Reserved for small exp/nbf skew handled by core verifier. |
 | `logger`                     | `Logger` or `nil`                    | `nil`        | Logger for audit tags (`rid`, `sub`, `kid`, `iss/aud`). |
-| `token_header_priority`      | Array[String]                        | see code     | When Authorization is empty and no token chosen, seed it from these env headers in order. `HTTP_AUTHORIZATION` is ignored as a source; forwarded header is considered only from trusted peers. |
+| `token_header_priority`      | Array[String]                        | `['HTTP_X_FORWARDED_ACCESS_TOKEN']` | When Authorization is empty and no token chosen, seed it from these env headers in order. `HTTP_AUTHORIZATION` is ignored as a source; forwarded header is considered only from trusted peers. |
 | `forwarded_header_name`      | String                               | `HTTP_X_FORWARDED_ACCESS_TOKEN` | Env key for forwarded access token. |
 | `auth_request_headers`       | Hash                                 | see code     | Mapping for `X-Auth-Request-*` env keys: `{ email, user, groups }`. |
 

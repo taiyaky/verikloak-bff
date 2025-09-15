@@ -11,13 +11,16 @@
 # headers against JWT claims, and normalizes the request into
 # `HTTP_AUTHORIZATION: Bearer <token>` for the downstream verifier.
 require 'rack'
+require 'rack/utils'
 require 'json'
 require 'jwt'
+require 'digest'
 require 'verikloak/bff/configuration'
 require 'verikloak/bff/errors'
 require 'verikloak/bff/proxy_trust'
 require 'verikloak/bff/forwarded_token'
 require 'verikloak/bff/consistency_checks'
+require 'verikloak/bff/constants'
 
 module Verikloak
   module BFF
@@ -38,6 +41,10 @@ module Verikloak
         combined.merge!(opts) if opts.is_a?(Hash)
         combined.merge!(opts_kw) if opts_kw && !opts_kw.empty?
         apply_overrides!(combined)
+
+        return unless @config.trusted_proxies.nil? || @config.trusted_proxies.empty?
+
+        raise ArgumentError, 'trusted_proxies must be configured'
       end
 
       # Process a Rack request.
@@ -121,21 +128,13 @@ module Verikloak
       #
       # @param token [String]
       # @return [Array(Hash, Hash)] [payload, header]
-      def decode_unverified(token)
-        parts = token.to_s.split('.')
-        return [{}, {}] unless parts.size >= 2
 
-        payload = begin
-          JSON.parse(::JWT::Base64.url_decode(parts[1]))
-        rescue StandardError
-          {}
-        end
-        header = begin
-          JSON.parse(::JWT::Base64.url_decode(parts[0]))
-        rescue StandardError
-          {}
-        end
-        [payload, header]
+      def decode_unverified(token)
+        return [{}, {}] if token.nil? || token.bytesize > Constants::MAX_TOKEN_BYTES
+
+        JWT.decode(token, nil, false)
+      rescue StandardError
+        [{}, {}]
       end
 
       # Extract request id for logging from common headers.
@@ -203,7 +202,10 @@ module Verikloak
       def enforce_header_consistency!(env, auth_token, fwd_token)
         return unless @config.enforce_header_consistency
         return unless auth_token && fwd_token
-        return if auth_token == fwd_token
+
+        digest_a = ::Digest::SHA256.hexdigest(auth_token)
+        digest_b = ::Digest::SHA256.hexdigest(fwd_token)
+        return if Rack::Utils.secure_compare(digest_a, digest_b)
 
         log_event(env, :mismatch, reason: 'authorization_vs_forwarded')
         raise HeaderMismatchError

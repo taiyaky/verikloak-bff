@@ -7,6 +7,7 @@
 
 require 'json'
 require 'jwt' # used only to parse segments safely without verify
+require 'verikloak/bff/constants'
 
 module Verikloak
   module BFF
@@ -19,14 +20,12 @@ module Verikloak
       #
       # @param token [String, nil]
       # @return [Hash] claims or empty hash on error
+
       def decode_claims(token)
         return {} unless token
+        return {} if token.bytesize > Constants::MAX_TOKEN_BYTES
 
-        parts = token.split('.')
-        return {} unless parts.size >= 2
-
-        payload = JWT::Base64.url_decode(parts[1])
-        JSON.parse(payload)
+        JWT.decode(token, nil, false).first
       rescue StandardError
         {}
       end

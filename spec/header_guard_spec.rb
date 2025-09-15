@@ -31,6 +31,27 @@ RSpec.describe Verikloak::BFF::HeaderGuard do
     [header, body, "sig"].join(".")
   end
 
+  # Build two tokens: the largest token that is <= MAX, and the first token > MAX
+  def boundary_tokens(max_bytes)
+    under = nil
+    over = nil
+    pad_len = 0
+    email = 'user@example.com'
+    while pad_len < max_bytes * 2
+      token = jwt_with({ email: email, pad: 'x' * pad_len })
+      size = token.bytesize
+      if size <= max_bytes
+        under = token
+      else
+        over = token
+        break
+      end
+      pad_len += 1
+    end
+    raise 'failed to build boundary tokens' unless under && over
+    [under, over, email]
+  end
+
   # Basic behavior (from original spec)
   it "promotes forwarded token to Authorization when preferred" do
     header "X-Forwarded-For", "127.0.0.1"
@@ -38,6 +59,41 @@ RSpec.describe Verikloak::BFF::HeaderGuard do
     get "/"
     expect(last_response.status).to eq 200
     expect(last_request.env["HTTP_AUTHORIZATION"]).to eq "Bearer fwdtoken"
+  end
+
+  it "sanitizes control characters before writing Authorization" do
+    header "X-Forwarded-For", "127.0.0.1"
+    header "X-Forwarded-Access-Token", "Bearer tok\r\nmal"
+    get "/"
+    expect(last_response.status).to eq 200
+    expect(last_request.env["HTTP_AUTHORIZATION"]).to eq "Bearer tokmal"
+  end
+
+  context "token size boundary behavior" do
+    it "enforces claims consistency at boundary size (<= MAX)" do
+      max = Verikloak::BFF::Constants::MAX_TOKEN_BYTES
+      token_under, _token_over, email = boundary_tokens(max)
+
+      @app = build_app(trusted_proxies: ["127.0.0.1"], enforce_claims_consistency: { email: :email })
+      header "X-Forwarded-For", "127.0.0.1"
+      header "X-Forwarded-Access-Token", "Bearer #{token_under}"
+      header "X-Auth-Request-Email", email
+      get "/"
+      expect(last_response.status).to eq 200
+    end
+
+    it "treats oversized token (> MAX) as empty claims and rejects when mapping requires match" do
+      max = Verikloak::BFF::Constants::MAX_TOKEN_BYTES
+      _token_under, token_over, _email = boundary_tokens(max)
+
+      @app = build_app(trusted_proxies: ["127.0.0.1"], enforce_claims_consistency: { email: :email })
+      header "X-Forwarded-For", "127.0.0.1"
+      header "X-Forwarded-Access-Token", "Bearer #{token_over}"
+      header "X-Auth-Request-Email", "user@example.com"
+      get "/"
+      expect(last_response.status).to eq 403
+      expect(last_response.headers["WWW-Authenticate"]).to include("claims_mismatch")
+    end
   end
 
   it "rejects when both headers present and mismatch" do
@@ -50,6 +106,11 @@ RSpec.describe Verikloak::BFF::HeaderGuard do
   end
 
   context "trust boundary" do
+    it "requires trusted_proxies configuration" do
+      # Ensure the middleware is instantiated (Rack::Builder lazily builds on first call)
+      expect { build_app.to_app }.to raise_error(ArgumentError)
+    end
+
     it "rejects requests from untrusted proxy" do
       @app = build_app(trusted_proxies: ["127.0.0.1"], prefer_forwarded: true)
       header "X-Forwarded-For", "203.0.113.10"
