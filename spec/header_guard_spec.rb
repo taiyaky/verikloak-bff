@@ -264,7 +264,7 @@ RSpec.describe Verikloak::BFF::HeaderGuard do
         trusted_proxies: ["127.0.0.1"],
         prefer_forwarded: true,
         enforce_claims_consistency: { email: :email },
-        claims_consistency_mode: :log_only,
+        claims_consistency_mode: "log_only",
         log_with: ->(payload) { events << payload }
       )
 
