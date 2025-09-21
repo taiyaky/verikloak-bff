@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_No unreleased changes yet._
+
+## [0.1.2] - 2025-09-21
+
 ### Added
 - Configuration option `claims_consistency_mode` supporting `:log_only` so deployments can record mismatches without rejecting requests.
 
