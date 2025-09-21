@@ -24,6 +24,61 @@ require 'verikloak/bff/constants'
 
 module Verikloak
   module BFF
+    # Internal helpers that sanitize tokens and log payloads for HeaderGuard.
+    module HeaderGuardSanitizer
+      LOG_CONTROL_CHARS = /[[:cntrl:]]/
+
+      module_function
+
+      def token_tags(token)
+        return {} unless token
+
+        payload, header = decode_unverified(token)
+        aud = payload['aud']
+        aud = aud.join(' ') if aud.is_a?(Array)
+        {
+          sub: sanitize_log_field(payload['sub']&.to_s),
+          iss: sanitize_log_field(payload['iss']&.to_s),
+          aud: sanitize_log_field(aud&.to_s),
+          kid: sanitize_log_field(header['kid']&.to_s)
+        }.compact
+      rescue StandardError
+        {}
+      end
+
+      def decode_unverified(token)
+        return [{}, {}] if token.nil? || token.bytesize > Constants::MAX_TOKEN_BYTES
+
+        JWT.decode(token, nil, false)
+      rescue StandardError
+        [{}, {}]
+      end
+
+      def sanitize_payload(payload)
+        payload.transform_values { |value| sanitize_log_field(value) }.compact
+      end
+
+      def sanitize_log_field(value)
+        case value
+        when nil
+          nil
+        when String
+          sanitized = sanitize_string(value)
+          sanitized.empty? ? nil : sanitized
+        when Array
+          sanitized = value.map { |item| item.is_a?(String) ? sanitize_string(item) : item }
+          sanitized.reject! { |item| item.nil? || (item.is_a?(String) && item.empty?) }
+          sanitized.empty? ? nil : sanitized
+        else
+          value
+        end
+      end
+
+      def sanitize_string(value)
+        value.to_s.encode('UTF-8', invalid: :replace, undef: :replace, replace: '').gsub(LOG_CONTROL_CHARS, '')
+      end
+    end
+
     # Rack middleware that enforces BFF boundary and header/claims consistency.
     class HeaderGuard
       # Accept both Rack 2 and Rack 3 builder call styles:
@@ -106,37 +161,6 @@ module Verikloak
         end
       end
 
-      # Extract selected JWT tags for audit logging (best-effort, unverified).
-      #
-      # @param token [String, nil]
-      # @return [Hash] subset of {sub, iss, aud, kid}
-      def token_tags(token)
-        return {} unless token
-
-        payload, header = decode_unverified(token)
-        {
-          sub: payload['sub'],
-          iss: payload['iss'],
-          aud: (payload['aud'].is_a?(Array) ? payload['aud'].join(' ') : payload['aud']).to_s,
-          kid: header['kid']
-        }.compact
-      rescue StandardError
-        {}
-      end
-
-      # Decode JWT header/payload without validation (for logging only).
-      #
-      # @param token [String]
-      # @return [Array(Hash, Hash)] [payload, header]
-
-      def decode_unverified(token)
-        return [{}, {}] if token.nil? || token.bytesize > Constants::MAX_TOKEN_BYTES
-
-        JWT.decode(token, nil, false)
-      rescue StandardError
-        [{}, {}]
-      end
-
       # Extract request id for logging from common headers.
       #
       # @param env [Hash]
@@ -161,16 +185,17 @@ module Verikloak
       def log_event(env, kind, **attrs)
         lg = logger(env)
         payload = { event: 'bff.header_guard', kind: kind, rid: request_id(env) }.merge(attrs).compact
+        sanitized = HeaderGuardSanitizer.sanitize_payload(payload)
         if @config.log_with.respond_to?(:call)
           begin
-            @config.log_with.call(payload)
+            @config.log_with.call(sanitized)
           rescue StandardError
             # ignore log hook failures
           end
         end
         return unless lg
 
-        msg = payload.map { |k, v| v.nil? || v.to_s.empty? ? nil : "#{k}=#{v}" }.compact.join(' ')
+        msg = sanitized.map { |k, v| v.nil? || v.to_s.empty? ? nil : "#{k}=#{v}" }.compact.join(' ')
         level = (kind == :ok ? :info : :warn)
         lg.public_send(level, msg)
       rescue StandardError
@@ -221,7 +246,19 @@ module Verikloak
 
         field = res.last
         log_event(env, :claims_mismatch, field: field.to_s)
+        return if claims_consistency_log_only?
+
         raise ClaimsMismatchError, field
+      end
+
+      # Determine whether claims mismatches should only be logged.
+      #
+      # @return [Boolean]
+      def claims_consistency_log_only?
+        mode = @config.claims_consistency_mode || :enforce
+        mode = mode.to_sym if mode.is_a?(String)
+        mode = :enforce unless %i[enforce log_only].include?(mode)
+        mode == :log_only
       end
 
       # Set normalized Authorization header and emit success log.
@@ -234,7 +271,7 @@ module Verikloak
         return unless chosen
 
         ForwardedToken.set_authorization!(env, chosen)
-        log_event(env, :ok, source: token_source(auth_token, fwd_token), **token_tags(chosen))
+        log_event(env, :ok, source: token_source(auth_token, fwd_token), **HeaderGuardSanitizer.token_tags(chosen))
       end
 
       # Build a minimal RFC6750-style error response.
