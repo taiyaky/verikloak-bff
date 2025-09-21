@@ -15,6 +15,7 @@ require 'rack/utils'
 require 'json'
 require 'jwt'
 require 'digest'
+require 'verikloak/header_sources'
 require 'verikloak/bff/configuration'
 require 'verikloak/bff/errors'
 require 'verikloak/bff/proxy_trust'
@@ -324,8 +325,8 @@ module Verikloak
       # @return [String, nil]
       def resolve_first_token_header(env)
         candidates = Array(@config.token_header_priority).dup
-        candidates -= ['HTTP_AUTHORIZATION']
-        fwd_key = 'HTTP_X_FORWARDED_ACCESS_TOKEN'
+        candidates -= [Verikloak::HeaderSources::AUTHORIZATION_HEADER]
+        fwd_key = @config.forwarded_header_name || Verikloak::HeaderSources::DEFAULT_FORWARDED_HEADER
         if candidates.include?(fwd_key) && !ProxyTrust.from_trusted_proxy?(env, @config.trusted_proxies)
           candidates -= [fwd_key]
         end

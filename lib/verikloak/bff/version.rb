@@ -5,6 +5,6 @@
 # @return [String]
 module Verikloak
   module BFF
-    VERSION = '0.1.2'
+    VERSION = '0.2.0'
   end
 end

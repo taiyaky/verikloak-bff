@@ -107,7 +107,7 @@ Enable via:
 enforce_claims_consistency: { email: :email, user: :sub, groups: :realm_roles }
 ```
 
-Header names can be remapped via `auth_request_headers` in the initializer.
+Header names can be remapped via `auth_request_headers` in the initializer. Header keys and priority lists are normalized via `Verikloak::HeaderSources`, so symbols, mixed-case, or dash-separated keys are acceptable.
 
 ## 5) Validation checklist
 - XFF interpretation (leftmost/rightmost) matches your proxy’s behavior

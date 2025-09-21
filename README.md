@@ -53,7 +53,7 @@ See `examples/rack.ru` for a tiny Rack app demo.
 | `peer_preference`            | Symbol (`:remote_then_xff`/`:xff_only`) | `:remote_then_xff` | Whether to prefer `REMOTE_ADDR` before falling back to XFF. |
 | `clock_skew_leeway`          | Integer (seconds)                    | `30`         | Reserved for small exp/nbf skew handled by core verifier. |
 | `logger`                     | `Logger` or `nil`                    | `nil`        | Logger for audit tags (`rid`, `sub`, `kid`, `iss/aud`). |
-| `token_header_priority`      | Array[String]                        | `['HTTP_X_FORWARDED_ACCESS_TOKEN']` | When Authorization is empty and no token chosen, seed it from these env headers in order. `HTTP_AUTHORIZATION` is ignored as a source; forwarded header is considered only from trusted peers. |
+| `token_header_priority`      | Array[String]                        | `['HTTP_X_FORWARDED_ACCESS_TOKEN']` | When Authorization is empty and no token chosen, seed it from these env headers in order. Values are normalized via `Verikloak::HeaderSources`; `HTTP_AUTHORIZATION` is ignored as a source. |
 | `forwarded_header_name`      | String                               | `HTTP_X_FORWARDED_ACCESS_TOKEN` | Env key for forwarded access token. |
 | `auth_request_headers`       | Hash                                 | see code     | Mapping for `X-Auth-Request-*` env keys: `{ email, user, groups }`. |
 
@@ -82,6 +82,7 @@ For full reverse proxy examples (Nginx auth_request / oauth2-proxy), see [docs/r
 - Authorization seeding from priority headers
   - When no token is chosen and `HTTP_AUTHORIZATION` is empty, the middleware consults `token_header_priority` to seed Authorization.
   - `HTTP_AUTHORIZATION` itself is never used as a source; forwarded headers are considered only from trusted peers.
+  - Other gems can `require 'verikloak/header_sources'` to reuse the same normalization helpers when sharing configuration defaults.
 
 - Observability helpers
   - Downstream can inspect `env['verikloak.bff.token']` (chosen token, unverified) and `env['verikloak.bff.selected_peer']` (peer IP selected for trust decisions).

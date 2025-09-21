@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.0] - 2025-09-22
+
+### Added
+- `Verikloak::HeaderSources` module for shared header normalization (consumable by verikloak-rails and other adapters).
+
+### Changed
+- `Configuration#token_header_priority=` now normalizes and deduplicates entries, reusing the shared helper and ignoring `HTTP_AUTHORIZATION` automatically.
+- `forwarded_header_name` assignments trigger re-normalization of token priority lists to keep middleware aligned across gems.
+
 ## [0.1.2] - 2025-09-21
 
 ### Added

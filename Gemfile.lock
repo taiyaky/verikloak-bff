@@ -1,10 +1,10 @@
 PATH
   remote: .
   specs:
-    verikloak-bff (0.1.2)
+    verikloak-bff (0.2.0)
       jwt (>= 2.7, < 4.0)
       rack (>= 2.2, < 4.0)
-      verikloak (>= 0.1.2, < 0.2)
+      verikloak (>= 0.1.5, < 1.0.0)
 
 GEM
   remote: https://rubygems.org/
@@ -22,6 +22,8 @@ GEM
       logger
     faraday-net_http (3.4.1)
       net-http (>= 0.5.0)
+    faraday-retry (2.3.2)
+      faraday (~> 2.0)
     json (2.13.2)
     jwt (2.10.2)
       base64
@@ -89,10 +91,11 @@ GEM
       unicode-emoji (~> 4.1)
     unicode-emoji (4.1.0)
     uri (1.0.3)
-    verikloak (0.1.2)
+    verikloak (0.1.5)
       faraday (>= 2.0, < 3.0)
+      faraday-retry (>= 2.0, < 3.0)
       json (~> 2.6)
-      jwt (~> 2.7)
+      jwt (>= 2.7, < 4.0)
 
 PLATFORMS
   aarch64-linux-musl
