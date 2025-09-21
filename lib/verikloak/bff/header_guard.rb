@@ -256,6 +256,7 @@ module Verikloak
       # @return [Boolean]
       def claims_consistency_log_only?
         mode = @config.claims_consistency_mode || :enforce
+        mode = mode.to_sym if mode.is_a?(String)
         mode = :enforce unless %i[enforce log_only].include?(mode)
         mode == :log_only
       end
