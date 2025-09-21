@@ -22,6 +22,8 @@
 # @!attribute [rw] logger
 #   @return [Logger, nil] optional logger for audit tags
 
+require 'verikloak/header_sources'
+
 module Verikloak
   module BFF
     # Configuration for Verikloak::BFF middleware (trusted proxies, header policies, logging, etc.).
@@ -29,9 +31,9 @@ module Verikloak
       attr_accessor :trusted_proxies, :prefer_forwarded, :require_forwarded_header,
                     :enforce_header_consistency, :enforce_claims_consistency,
                     :strip_suspicious_headers, :xff_strategy, :clock_skew_leeway,
-                    :logger, :token_header_priority, :peer_preference,
-                    :forwarded_header_name, :auth_request_headers, :log_with,
+                    :logger, :peer_preference, :auth_request_headers, :log_with,
                     :claims_consistency_mode
+      attr_reader :token_header_priority, :forwarded_header_name
 
       # enforce_claims_consistency example:
       # { email: :email, user: :sub, groups: :realm_roles }
@@ -53,7 +55,7 @@ module Verikloak
         @clock_skew_leeway = 30
         @logger = nil
         @log_with = nil
-        @forwarded_header_name = 'HTTP_X_FORWARDED_ACCESS_TOKEN'
+        self.forwarded_header_name = Verikloak::HeaderSources::DEFAULT_FORWARDED_HEADER
         @auth_request_headers = {
           email: 'HTTP_X_AUTH_REQUEST_EMAIL',
           user: 'HTTP_X_AUTH_REQUEST_USER',
@@ -61,9 +63,25 @@ module Verikloak
         }
         # When Authorization is empty and no chosen token exists, try these env headers (in order)
         # to seed Authorization, similar to verikloak-rails behavior. HTTP_AUTHORIZATION is always ignored as a source.
-        @token_header_priority = %w[
-          HTTP_X_FORWARDED_ACCESS_TOKEN
-        ]
+        self.token_header_priority = Verikloak::HeaderSources.default_priority(forwarded_header: @forwarded_header_name)
+      end
+
+      # Override forwarded header name while re-normalizing the token priority list.
+      #
+      # @param header [String, Symbol]
+      # @return [void]
+      def forwarded_header_name=(header)
+        @forwarded_header_name = Verikloak::HeaderSources.normalize_env_key(header)
+        self.token_header_priority = @token_header_priority
+      end
+
+      # Assign token header priority list using shared normalization logic.
+      #
+      # @param priority [Array<String, Symbol>, String, Symbol, nil]
+      # @return [void]
+      def token_header_priority=(priority)
+        normalized, = Verikloak::HeaderSources.normalize_priority(priority, forwarded_header: @forwarded_header_name)
+        @token_header_priority = normalized
       end
     end
   end
