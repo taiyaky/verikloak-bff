@@ -37,10 +37,10 @@ module Verikloak
         aud = payload['aud']
         aud = aud.join(' ') if aud.is_a?(Array)
         {
-          sub: sanitize_claim_value(payload['sub']),
-          iss: sanitize_claim_value(payload['iss']),
-          aud: sanitize_claim_value(aud),
-          kid: sanitize_claim_value(header['kid'])
+          sub: sanitize_log_field(payload['sub']&.to_s),
+          iss: sanitize_log_field(payload['iss']&.to_s),
+          aud: sanitize_log_field(aud&.to_s),
+          kid: sanitize_log_field(header['kid']&.to_s)
         }.compact
       rescue StandardError
         {}
@@ -76,13 +76,6 @@ module Verikloak
 
       def sanitize_string(value)
         value.to_s.encode('UTF-8', invalid: :replace, undef: :replace, replace: '').gsub(LOG_CONTROL_CHARS, '')
-      end
-
-      def sanitize_claim_value(value)
-        return if value.nil?
-
-        sanitized = sanitize_string(value.to_s)
-        sanitized.empty? ? nil : sanitized
       end
     end
 
