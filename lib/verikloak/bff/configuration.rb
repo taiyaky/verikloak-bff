@@ -67,12 +67,14 @@ module Verikloak
       end
 
       # Override forwarded header name while re-normalizing the token priority list.
+      # When the forwarded header changes, downstream priority normalization must
+      # be refreshed because the forwarded value participates in that list.
       #
       # @param header [String, Symbol]
       # @return [void]
       def forwarded_header_name=(header)
         @forwarded_header_name = Verikloak::HeaderSources.normalize_env_key(header)
-        self.token_header_priority = @token_header_priority
+        renormalize_token_priority!
       end
 
       # Assign token header priority list using shared normalization logic.
@@ -82,6 +84,16 @@ module Verikloak
       def token_header_priority=(priority)
         normalized, = Verikloak::HeaderSources.normalize_priority(priority, forwarded_header: @forwarded_header_name)
         @token_header_priority = normalized
+      end
+
+      private
+
+      # Re-apply token header normalization so it reflects the current forwarded header.
+      #
+      # @return [void]
+      def renormalize_token_priority!
+        # Refresh the normalized list so it reflects the new forwarded header name.
+        self.token_header_priority = @token_header_priority
       end
     end
   end

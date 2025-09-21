@@ -4,6 +4,7 @@
 # names and token source priority lists. Extracted to allow other gems (such as
 # verikloak-rails) to consume the same normalization logic.
 module Verikloak
+  # Provides normalization helpers for Rack env header keys and token priority lists.
   module HeaderSources
     module_function
 
@@ -36,7 +37,7 @@ module Verikloak
       forwarded_env = normalize_env_key(forwarded_header)
       items = Array(priority).flatten
 
-      normalized = Array(items).map { |value| normalize_env_key(value) }.reject(&:empty?)
+      normalized = items.map { |value| normalize_env_key(value) }.reject(&:empty?)
       normalized = [forwarded_env] if normalized.empty?
       normalized = normalized.reject { |key| drop_authorization && key == AUTHORIZATION_HEADER }
 
