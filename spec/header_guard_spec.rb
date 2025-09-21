@@ -235,6 +235,53 @@ RSpec.describe Verikloak::BFF::HeaderGuard do
     end
   end
 
+  context "logging" do
+    it "sanitizes control characters before invoking log hook" do
+      events = []
+      @app = build_app(
+        trusted_proxies: ["127.0.0.1"],
+        prefer_forwarded: true,
+        log_with: ->(payload) { events << payload }
+      )
+
+      header "X-Forwarded-For", "127.0.0.1"
+      header "X-Request-Id", "req\n123"
+      token = jwt_with({ sub: "user\nevIl" })
+      header "X-Forwarded-Access-Token", "Bearer #{token}"
+
+      get "/"
+
+      expect(last_response.status).to eq 200
+      ok_event = events.find { |payload| payload[:kind] == :ok }
+      expect(ok_event).not_to be_nil
+      expect(ok_event[:sub]).to eq("userevIl")
+      expect(ok_event[:rid]).to eq("req123")
+    end
+
+    it "logs claims mismatch without rejecting when mode is log_only" do
+      events = []
+      @app = build_app(
+        trusted_proxies: ["127.0.0.1"],
+        prefer_forwarded: true,
+        enforce_claims_consistency: { email: :email },
+        claims_consistency_mode: :log_only,
+        log_with: ->(payload) { events << payload }
+      )
+
+      header "X-Forwarded-For", "127.0.0.1"
+      token = jwt_with({ email: "a@example.com" })
+      header "X-Forwarded-Access-Token", "Bearer #{token}"
+      header "X-Auth-Request-Email", "b@example.com"
+
+      get "/"
+
+      expect(last_response.status).to eq 200
+      mismatch_event = events.find { |payload| payload[:kind] == :claims_mismatch }
+      expect(mismatch_event).not_to be_nil
+      expect(mismatch_event[:field]).to eq('email')
+    end
+  end
+
   context "strip suspicious headers" do
     it "removes X-Auth-Request-* before passing downstream" do
       @app = build_app(trusted_proxies: ["127.0.0.1"], strip_suspicious_headers: true)

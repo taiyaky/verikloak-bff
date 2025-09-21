@@ -35,6 +35,8 @@ Verikloak::BFF.configure do |c|
 
   # Claim/header consistency
   c.enforce_claims_consistency = { email: :email, user: :sub, groups: :realm_roles }
+  # Toggle log-only mode when you want observability without rejecting requests
+  # c.claims_consistency_mode = :log_only
 
   # Header names (customizable if your proxy uses different keys)
   c.forwarded_header_name = 'HTTP_X_FORWARDED_ACCESS_TOKEN'
@@ -51,7 +53,7 @@ Verikloak::BFF.configure do |c|
   c.strip_suspicious_headers = true
 
   # Structured logging hook (optional)
-  c.log_with = ->(payload) { Rails.logger.info(payload.to_json) }
+  c.log_with = ->(payload) { Rails.logger.info(payload.to_json) } # payload strings are sanitized before this hook is invoked
 end
 ```
 
@@ -110,6 +112,7 @@ Header names can be remapped via `auth_request_headers` in the initializer.
 ## 5) Validation checklist
 - XFF interpretation (leftmost/rightmost) matches your proxy’s behavior
 - `trusted_proxies` includes proxy subnets
+- `trusted_proxies` list reviewed whenever proxy topology changes
 - `require_forwarded_header` is on when you want to block non-BFF direct access
 - Authorization is seeded only when empty and no chosen token exists
 - Errors are RFC6750-style; see ERRORS.md
@@ -118,4 +121,5 @@ Header names can be remapped via `auth_request_headers` in the initializer.
 - Leaving the Rails-side ForwardedAccessToken middleware enabled (double promotion/conflicts)
 - Misconfigured `trusted_proxies` leading to `untrusted_proxy` (401)
 - Missing forwarded token with `require_forwarded_header: true` (401)
+- Forgetting to set `claims_consistency_mode: :log_only` in environments where mismatches should not block traffic
 

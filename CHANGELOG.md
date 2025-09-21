@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- Configuration option `claims_consistency_mode` supporting `:log_only` so deployments can record mismatches without rejecting requests.
+
+### Changed
+- Sanitize log payload strings (including JWT tags) before invoking hooks or emitting to loggers to mitigate log forging attempts.
+
+### Documentation
+- Document trusted proxy hygiene, sanitized logging hooks, and the new log-only mode in the README and Rails guide.
+
 ## [0.1.1] - 2025-09-15
 
 ### Changed

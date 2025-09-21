@@ -47,6 +47,7 @@ See `examples/rack.ru` for a tiny Rack app demo.
 | `require_forwarded_header`   | Boolean                              | `false`      | Reject when no `X-Forwarded-Access-Token` (blocks direct access). |
 | `enforce_header_consistency` | Boolean                              | `true`       | If both headers exist, require identical token values. |
 | `enforce_claims_consistency` | Hash                                 | `{}`         | Mapping of header→claim to compare (e.g., `{ email: :email, user: :sub, groups: :realm_roles }`). |
+| `claims_consistency_mode`    | Symbol (`:enforce`/`:log_only`)      | `:enforce`   | When `:log_only`, mismatches are logged but the request continues (still require downstream JWT verification). |
 | `strip_suspicious_headers`   | Boolean                              | `true`       | Remove external `X-Auth-Request-*` before passing downstream. |
 | `xff_strategy`               | Symbol (`:rightmost`/`:leftmost`)    | `:rightmost` | Which peer to pick from `X-Forwarded-For`. |
 | `peer_preference`            | Symbol (`:remote_then_xff`/`:xff_only`) | `:remote_then_xff` | Whether to prefer `REMOTE_ADDR` before falling back to XFF. |
@@ -69,6 +70,9 @@ For full reverse proxy examples (Nginx auth_request / oauth2-proxy), see [docs/r
   - Set `peer_preference: :remote_then_xff` (default) to evaluate trust using the direct peer first, then fall back to the nearest (rightmost) `X-Forwarded-For` value.
   - If you run only behind a single, known proxy chain and want to rely solely on XFF ordering, use `peer_preference: :xff_only` and control position with `xff_strategy`.
 
+- Trusted proxy hygiene
+  - Keep `trusted_proxies` as specific as possible (individual IPs, tight CIDR ranges, or regexes). Review the list whenever proxy topology changes to avoid unintentionally widening the trust boundary.
+
 - Header name customization
   - Forwarded-access-token header can be changed via:
     - `forwarded_header_name: 'HTTP_X_CUSTOM_FORWARD_TOKEN'`
@@ -81,8 +85,11 @@ For full reverse proxy examples (Nginx auth_request / oauth2-proxy), see [docs/r
 
 - Observability helpers
   - Downstream can inspect `env['verikloak.bff.token']` (chosen token, unverified) and `env['verikloak.bff.selected_peer']` (peer IP selected for trust decisions).
-  - Provide a structured log hook with `log_with: ->(payload) { logger.info(payload.to_json) }` to consume the same fields emitted to `logger`.
+  - Provide a structured log hook with `log_with: ->(payload) { logger.info(payload.to_json) }` to consume the same fields emitted to `logger`. Payload strings are sanitized (control characters removed) before hooks and loggers run to mitigate log forging.
   - Caution: avoid logging the entire Rack `env` in application logs. Treat `env['verikloak.bff.token']` as sensitive; never emit raw tokens or PII (e.g., emails) to logs.
+
+- Claims consistency modes
+  - Default `:enforce` mode rejects requests with mismatches. Switch to `claims_consistency_mode: :log_only` when you only need observability signals; downstream services must continue verifying JWT signatures, issuer, audience, and expirations.
 
 ## Development (for contributors)
 Clone and install dependencies:

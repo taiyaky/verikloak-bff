@@ -106,6 +106,8 @@ module Verikloak
         end
       end
 
+      LOG_CONTROL_CHARS = /[[:cntrl:]]/.freeze
+
       # Extract selected JWT tags for audit logging (best-effort, unverified).
       #
       # @param token [String, nil]
@@ -114,11 +116,13 @@ module Verikloak
         return {} unless token
 
         payload, header = decode_unverified(token)
+        aud = payload['aud']
+        aud = aud.join(' ') if aud.is_a?(Array)
         {
-          sub: payload['sub'],
-          iss: payload['iss'],
-          aud: (payload['aud'].is_a?(Array) ? payload['aud'].join(' ') : payload['aud']).to_s,
-          kid: header['kid']
+          sub: sanitize_claim_value(payload['sub']),
+          iss: sanitize_claim_value(payload['iss']),
+          aud: sanitize_claim_value(aud),
+          kid: sanitize_claim_value(header['kid'])
         }.compact
       rescue StandardError
         {}
@@ -161,20 +165,57 @@ module Verikloak
       def log_event(env, kind, **attrs)
         lg = logger(env)
         payload = { event: 'bff.header_guard', kind: kind, rid: request_id(env) }.merge(attrs).compact
+        sanitized = sanitize_payload(payload)
         if @config.log_with.respond_to?(:call)
           begin
-            @config.log_with.call(payload)
+            @config.log_with.call(sanitized)
           rescue StandardError
             # ignore log hook failures
           end
         end
         return unless lg
 
-        msg = payload.map { |k, v| v.nil? || v.to_s.empty? ? nil : "#{k}=#{v}" }.compact.join(' ')
+        msg = sanitized.map { |k, v| v.nil? || v.to_s.empty? ? nil : "#{k}=#{v}" }.compact.join(' ')
         level = (kind == :ok ? :info : :warn)
         lg.public_send(level, msg)
       rescue StandardError
         # no-op on logging errors
+      end
+
+      # Produce a sanitized payload for logging.
+      #
+      # @param payload [Hash]
+      # @return [Hash]
+      def sanitize_payload(payload)
+        payload.each_with_object({}) do |(key, value), acc|
+          acc[key] = sanitize_log_field(value)
+        end.compact
+      end
+
+      # Sanitize a single log field while preserving non-string types.
+      #
+      # @param value [Object]
+      # @return [Object, nil]
+      def sanitize_log_field(value)
+        case value
+        when nil
+          nil
+        when String
+          sanitized = sanitize_string(value)
+          sanitized.empty? ? nil : sanitized
+        when Array
+          value.map { |item| item.is_a?(String) ? sanitize_string(item) : item }
+        else
+          value
+        end
+      end
+
+      # Remove control characters and invalid encoding from a string.
+      #
+      # @param value [String]
+      # @return [String]
+      def sanitize_string(value)
+        value.to_s.encode('UTF-8', invalid: :replace, undef: :replace, replace: '').gsub(LOG_CONTROL_CHARS, '')
       end
 
       # Raise when the request did not come through a trusted proxy.
@@ -221,7 +262,18 @@ module Verikloak
 
         field = res.last
         log_event(env, :claims_mismatch, field: field.to_s)
+        return if claims_consistency_log_only?
+
         raise ClaimsMismatchError, field
+      end
+
+      # Determine whether claims mismatches should only be logged.
+      #
+      # @return [Boolean]
+      def claims_consistency_log_only?
+        mode = @config.claims_consistency_mode || :enforce
+        mode = :enforce unless %i[enforce log_only].include?(mode)
+        mode == :log_only
       end
 
       # Set normalized Authorization header and emit success log.
@@ -287,6 +339,18 @@ module Verikloak
         env['verikloak.bff.token'] = chosen if chosen
         env['verikloak.bff.selected_peer'] =
           ProxyTrust.selected_peer(env, @config.peer_preference, @config.xff_strategy)
+      end
+
+      # Sanitize claim value for inclusion in logs.
+      #
+      # @param value [Object]
+      # @return [String, nil]
+      def sanitize_claim_value(value)
+        return if value.nil?
+
+        str = value.to_s
+        sanitized = sanitize_string(str)
+        sanitized.empty? ? nil : sanitized
       end
     end
   end

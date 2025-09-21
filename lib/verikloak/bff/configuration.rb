@@ -30,7 +30,8 @@ module Verikloak
                     :enforce_header_consistency, :enforce_claims_consistency,
                     :strip_suspicious_headers, :xff_strategy, :clock_skew_leeway,
                     :logger, :token_header_priority, :peer_preference,
-                    :forwarded_header_name, :auth_request_headers, :log_with
+                    :forwarded_header_name, :auth_request_headers, :log_with,
+                    :claims_consistency_mode
 
       # enforce_claims_consistency example:
       # { email: :email, user: :sub, groups: :realm_roles }
@@ -40,6 +41,7 @@ module Verikloak
         @require_forwarded_header = false
         @enforce_header_consistency = true
         @enforce_claims_consistency = {}
+        @claims_consistency_mode = :enforce
         @strip_suspicious_headers = true
         @xff_strategy = :rightmost
         @peer_preference = :remote_then_xff
