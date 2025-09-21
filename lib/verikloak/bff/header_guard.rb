@@ -66,7 +66,9 @@ module Verikloak
           sanitized = sanitize_string(value)
           sanitized.empty? ? nil : sanitized
         when Array
-          value.map { |item| item.is_a?(String) ? sanitize_string(item) : item }
+          sanitized = value.map { |item| item.is_a?(String) ? sanitize_string(item) : item }
+          sanitized.reject! { |item| item.nil? || (item.is_a?(String) && item.empty?) }
+          sanitized.empty? ? nil : sanitized
         else
           value
         end
