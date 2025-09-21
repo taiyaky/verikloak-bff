@@ -16,6 +16,8 @@ module Verikloak
       # Extract normalized tokens from the Rack env.
       #
       # @param env [Hash]
+      # @param forwarded_header_name [String] Rack env key for forwarded header
+      # @param auth_header_name [String] Rack env key for Authorization header
       # @return [Array(String, String)] [auth_token, forwarded_token]
       def extract(env, forwarded_header_name = FORWARDED_HEADER, auth_header_name = AUTH_HEADER)
         fwd_raw = env[forwarded_header_name]
@@ -54,6 +56,7 @@ module Verikloak
       # - Detects scheme case-insensitively
       # - Inserts a missing space (e.g., 'BearerXYZ' => 'Bearer XYZ')
       # - Collapses multiple spaces/tabs after the scheme to a single space
+      #
       # @param token [String]
       # @return [String]
       def ensure_bearer(token)
@@ -78,6 +81,7 @@ module Verikloak
       #
       # @param env [Hash]
       # @param token [String]
+      # @return [void]
       def set_authorization!(env, token)
         existing = env[AUTH_HEADER].to_s
         # Overwrite only if Authorization is empty or not a valid Bearer value
@@ -98,6 +102,8 @@ module Verikloak
       # downstream when not emitted by a trusted proxy.
       #
       # @param env [Hash]
+      # @param headers [Hash{Symbol=>String}, nil] explicit headers to strip
+      # @return [void]
       def strip_suspicious!(env, headers = nil)
         if headers.is_a?(Hash)
           headers.each_value { |h| env.delete(h) }

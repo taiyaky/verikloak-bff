@@ -53,6 +53,7 @@ module Verikloak
       end
 
       # Return the selected peer IP according to preference and strategy.
+      #
       # @param env [Hash]
       # @param preference [Symbol] :remote_then_xff or :xff_only
       # @param strategy [Symbol] :rightmost or :leftmost
@@ -70,6 +71,7 @@ module Verikloak
       end
 
       # Parse string to IPAddr or nil on failure.
+      #
       # @param str [String]
       # @return [IPAddr, nil]
       def ip_or_nil(str)
@@ -79,6 +81,7 @@ module Verikloak
       end
 
       # Check whether a single rule trusts the selected remote.
+      #
       # @param rule [String, Regexp, Proc]
       # @param remote [String]
       # @param remote_ip [IPAddr, nil]
@@ -104,6 +107,7 @@ module Verikloak
 
       # Determine if the request originates from a trusted proxy subnet.
       # Rails-aligned behavior: prefer REMOTE_ADDR, fallback to nearest (rightmost) X-Forwarded-For.
+      #
       # @param env [Hash]
       # @param trusted [Array<String, Regexp, Proc>, nil]
       # @return [Boolean]

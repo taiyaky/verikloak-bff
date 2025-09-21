@@ -12,6 +12,12 @@ module Verikloak
     class Error < StandardError
       attr_reader :code, :http_status
 
+      # Build a BFF error with a stable code and HTTP status.
+      #
+      # @param message [String, nil]
+      # @param code [String]
+      # @param http_status [Integer]
+      # @return [void]
       def initialize(message = nil, code: 'bff_error', http_status: 401)
         super(message || code)
         @code = code
@@ -21,6 +27,8 @@ module Verikloak
 
     # Raised when a request did not pass through a trusted proxy peer.
     class UntrustedProxyError < Error
+      # @param msg [String]
+      # @return [void]
       def initialize(msg = 'request did not pass through a trusted proxy')
         super(msg, code: 'untrusted_proxy', http_status: 401)
       end
@@ -28,6 +36,8 @@ module Verikloak
 
     # Raised when require_forwarded_header is enabled but the forwarded token is absent.
     class MissingForwardedTokenError < Error
+      # @param msg [String]
+      # @return [void]
       def initialize(msg = 'missing X-Forwarded-Access-Token')
         super(msg, code: 'missing_forwarded_token', http_status: 401)
       end
@@ -35,6 +45,8 @@ module Verikloak
 
     # Raised when Authorization and X-Forwarded-Access-Token both exist and differ.
     class HeaderMismatchError < Error
+      # @param msg [String]
+      # @return [void]
       def initialize(msg = 'authorization and forwarded token mismatch')
         super(msg, code: 'header_mismatch', http_status: 401)
       end
@@ -42,6 +54,9 @@ module Verikloak
 
     # Raised when X-Auth-Request-* headers conflict with JWT claims.
     class ClaimsMismatchError < Error
+      # @param field [Symbol, String]
+      # @param msg [String, nil]
+      # @return [void]
       def initialize(field, msg = nil)
         super(msg || "claims/header mismatch for #{field}", code: 'claims_mismatch', http_status: 403)
       end

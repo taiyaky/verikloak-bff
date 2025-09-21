@@ -30,6 +30,11 @@ module Verikloak
 
       module_function
 
+      # Generate sanitized token metadata suitable for structured logging without
+      # verifying the signature.
+      #
+      # @param token [String, nil]
+      # @return [Hash{Symbol=>Object}] sanitized tags keyed by JWT claim/header
       def token_tags(token)
         return {} unless token
 
@@ -46,6 +51,11 @@ module Verikloak
         {}
       end
 
+      # Decode a JWT without verifying the signature while guarding against
+      # excessively large tokens.
+      #
+      # @param token [String, nil]
+      # @return [Array<Hash>] payload and header hashes
       def decode_unverified(token)
         return [{}, {}] if token.nil? || token.bytesize > Constants::MAX_TOKEN_BYTES
 
@@ -54,10 +64,18 @@ module Verikloak
         [{}, {}]
       end
 
+      # Remove unsafe characters from a structured logging payload.
+      #
+      # @param payload [Hash]
+      # @return [Hash] sanitized payload suitable for logging
       def sanitize_payload(payload)
         payload.transform_values { |value| sanitize_log_field(value) }.compact
       end
 
+      # Sanitize an individual value destined for logs, pruning empty results.
+      #
+      # @param value [Object]
+      # @return [Object, nil] sanitized value or nil when the result is empty
       def sanitize_log_field(value)
         case value
         when nil
@@ -74,6 +92,10 @@ module Verikloak
         end
       end
 
+      # Remove control characters and invalid UTF-8 from a string.
+      #
+      # @param value [#to_s]
+      # @return [String]
       def sanitize_string(value)
         value.to_s.encode('UTF-8', invalid: :replace, undef: :replace, replace: '').gsub(LOG_CONTROL_CHARS, '')
       end
@@ -128,6 +150,7 @@ module Verikloak
       # Apply per-instance configuration overrides.
       #
       # @param opts [Hash]
+      # @return [void]
       def apply_overrides!(opts)
         cfg = @config
         opts.each do |k, v|
@@ -182,6 +205,7 @@ module Verikloak
       # @param env [Hash]
       # @param kind [Symbol] :ok, :mismatch, :claims_mismatch, :error
       # @param attrs [Hash]
+      # @return [void]
       def log_event(env, kind, **attrs)
         lg = logger(env)
         payload = { event: 'bff.header_guard', kind: kind, rid: request_id(env) }.merge(attrs).compact
@@ -205,6 +229,7 @@ module Verikloak
       # Raise when the request did not come through a trusted proxy.
       #
       # @param env [Hash]
+      # @raise [UntrustedProxyError]
       def ensure_trusted_proxy!(env)
         return if ProxyTrust.trusted?(env, @config.trusted_proxies, @config.xff_strategy)
 
@@ -214,6 +239,7 @@ module Verikloak
       # Enforce presence of forwarded token when required.
       #
       # @param fwd_token [String, nil]
+      # @raise [MissingForwardedTokenError]
       def ensure_forwarded_if_required!(fwd_token)
         return unless @config.require_forwarded_header
         raise MissingForwardedTokenError if fwd_token.nil? || fwd_token.to_s.strip.empty?
@@ -224,6 +250,7 @@ module Verikloak
       # @param env [Hash]
       # @param auth_token [String, nil]
       # @param fwd_token [String, nil]
+      # @raise [HeaderMismatchError]
       def enforce_header_consistency!(env, auth_token, fwd_token)
         return unless @config.enforce_header_consistency
         return unless auth_token && fwd_token
@@ -240,6 +267,8 @@ module Verikloak
       #
       # @param env [Hash]
       # @param chosen [String, nil]
+      # @return [void]
+      # @raise [ClaimsMismatchError]
       def enforce_claims_consistency!(env, chosen)
         res = ConsistencyChecks.enforce!(env, chosen, @config.enforce_claims_consistency, @config.auth_request_headers)
         return unless res.is_a?(Array) && res.first == :error
@@ -267,6 +296,7 @@ module Verikloak
       # @param chosen [String, nil]
       # @param auth_token [String, nil]
       # @param fwd_token [String, nil]
+      # @return [void]
       def normalize_authorization!(env, chosen, auth_token, fwd_token)
         return unless chosen
 
@@ -289,6 +319,7 @@ module Verikloak
 
       # Resolve the first env header from which to source a bearer token.
       # Forwarded is considered only when the peer is trusted; HTTP_AUTHORIZATION is never a source.
+      #
       # @param env [Hash]
       # @return [String, nil]
       def resolve_first_token_header(env)
@@ -301,7 +332,8 @@ module Verikloak
         candidates.find { |k| (v = env[k]) && !v.to_s.empty? }
       end
 
-      # Seed Authorization from priority headers if nothing chosen and empty Authorization
+      # Seed Authorization from priority headers if nothing chosen and empty Authorization.
+      #
       # @param env [Hash]
       # @param chosen [String, nil]
       # @return [String, nil] possibly updated chosen token
@@ -317,9 +349,11 @@ module Verikloak
         chosen
       end
 
-      # Expose hints to downstream
+      # Expose hints to downstream middleware or apps.
+      #
       # @param env [Hash]
       # @param chosen [String, nil]
+      # @return [void]
       def expose_env_hints(env, chosen)
         env['verikloak.bff.token'] = chosen if chosen
         env['verikloak.bff.selected_peer'] =

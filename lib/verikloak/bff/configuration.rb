@@ -35,6 +35,11 @@ module Verikloak
 
       # enforce_claims_consistency example:
       # { email: :email, user: :sub, groups: :realm_roles }
+      #
+      # Initialize configuration with secure defaults for proxy trust, token
+      # handling, and logging behavior.
+      #
+      # @return [void]
       def initialize
         @trusted_proxies = []
         @prefer_forwarded = true

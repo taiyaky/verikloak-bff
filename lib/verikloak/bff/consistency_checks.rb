@@ -15,12 +15,11 @@ module Verikloak
     module ConsistencyChecks
       module_function
 
-      # Parse JWT payload without verifying (verikloak core will verify later).
-      # Decode JWT payload without verification.
+      # Decode the JWT payload without verifying the signature. Intended only
+      # for lightweight claim comparisons; full verification occurs downstream.
       #
       # @param token [String, nil]
       # @return [Hash] claims or empty hash on error
-
       def decode_claims(token)
         return {} unless token
         return {} if token.bytesize > Constants::MAX_TOKEN_BYTES
@@ -36,6 +35,7 @@ module Verikloak
       # @param env [Hash]
       # @param token [String, nil]
       # @param mapping [Hash] e.g., { email: :email, user: :sub, groups: :realm_roles }
+      # @param headers_map [Hash{Symbol=>String}, nil] overrides for header keys
       # @return [true, Array(:error, Symbol)] true or error tuple with failing field
       def enforce!(env, token, mapping, headers_map = nil)
         return true if mapping.nil? || mapping.empty?
@@ -63,6 +63,7 @@ module Verikloak
       #
       # @param env [Hash]
       # @param key [Symbol]
+      # @param headers_map [Hash{Symbol=>String}, nil]
       # @return [String, nil]
       def extract_header_value(env, key, headers_map = nil)
         return env[headers_map[key]] if headers_map && headers_map[key]
