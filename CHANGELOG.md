@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.3] - 2025-09-23
+
+### Changed
+- Stop inserting `Verikloak::BFF::HeaderGuard` automatically via the Railtie and provide a `rails g verikloak:bff:install` generator that drops an initializer to opt in when the core middleware is ready.
+
 ## [0.2.2] - 2025-09-23
 
 ### Changed

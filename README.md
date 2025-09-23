@@ -31,12 +31,16 @@ use Verikloak::BFF::HeaderGuard, trusted_proxies: ['127.0.0.1', '10.0.0.0/8']
 ```
 
 ### Rails Applications
-Simply add to your Gemfile and the middleware will be automatically integrated:
+Add the gem to your Gemfile and run the install generator to drop an initializer that wires the middleware into Rails:
 ```ruby
 gem 'verikloak-bff'
 ```
 
-The gem automatically inserts `Verikloak::BFF::HeaderGuard` into the Rails middleware stack after the core `Verikloak::Middleware`. If the core middleware is not present (e.g., discovery not configured), it gracefully skips insertion with a warning, allowing Rails to boot normally.
+```sh
+bin/rails g verikloak:bff:install
+```
+
+The generated initializer inserts `Verikloak::BFF::HeaderGuard` after the core `Verikloak::Middleware` during boot. If the core middleware is not present (for example, when verikloak-rails has not been fully configured yet), the initializer logs a warning and allows Rails to boot normally.
 
 For detailed configuration, proxy setup examples, and troubleshooting, see [docs/rails.md](docs/rails.md).
 
