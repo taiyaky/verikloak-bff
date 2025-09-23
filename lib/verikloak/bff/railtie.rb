@@ -25,9 +25,7 @@ module Verikloak
       #
       # @param app [Rails::Application] Rails application instance
       initializer 'verikloak.bff.insert_middleware', after: 'verikloak.middleware' do |app|
-        logger = if defined?(::Rails.logger)
-                   ::Rails.logger
-                 end
+        logger = ::Rails.logger if defined?(::Rails.logger)
 
         Verikloak::BFF::Rails::Middleware.insert_after_core(app.config.middleware, logger: logger)
       end
