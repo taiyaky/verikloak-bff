@@ -20,6 +20,4 @@ require 'verikloak/bff/consistency_checks'
 require 'verikloak/bff/header_guard'
 require 'verikloak/bff/rails'
 
-if defined?(::Rails::Railtie)
-  require 'verikloak/bff/railtie'
-end
+require 'verikloak/bff/railtie' if defined?(Rails::Railtie)
