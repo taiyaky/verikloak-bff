@@ -71,9 +71,9 @@ module Verikloak
         # @example Logging without logger (uses warn)
         #   log_skip(nil)
         def log_skip(logger)
-          message = '[verikloak-bff] Skipping Verikloak::BFF::HeaderGuard insertion because '
-          message += 'Verikloak::Middleware is not present. Configure verikloak-rails discovery '
-          message += 'settings and restart once core verification is enabled.'
+          message = <<~MSG.chomp
+            [verikloak-bff] Skipping Verikloak::BFF::HeaderGuard insertion because Verikloak::Middleware is not present. Configure verikloak-rails discovery settings and restart once core verification is enabled.
+          MSG
 
           if logger
             logger.warn(message)
