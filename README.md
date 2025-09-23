@@ -23,8 +23,22 @@ bundle add verikloak-bff
 
 ## Usage
 
-- Rack-only apps: `use Verikloak::BFF::HeaderGuard` before your core Verikloak middleware.
-- Rails apps: see the full guide in [docs/rails.md](docs/rails.md) (Gemfile, middleware order、initializer、proxy examples)。
+### Rack Applications
+Add to your `config.ru`:
+```ruby
+use Verikloak::BFF::HeaderGuard, trusted_proxies: ['127.0.0.1', '10.0.0.0/8']
+# Place before your core Verikloak middleware
+```
+
+### Rails Applications
+Simply add to your Gemfile and the middleware will be automatically integrated:
+```ruby
+gem 'verikloak-bff'
+```
+
+The gem automatically inserts `Verikloak::BFF::HeaderGuard` into the Rails middleware stack after the core `Verikloak::Middleware`. If the core middleware is not present (e.g., discovery not configured), it gracefully skips insertion with a warning, allowing Rails to boot normally.
+
+For detailed configuration, proxy setup examples, and troubleshooting, see [docs/rails.md](docs/rails.md).
 
 ## Consistency mapping
 

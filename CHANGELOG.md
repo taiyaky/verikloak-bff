@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.1] - 2025-09-23
+
+### Fixed
+- Skip inserting `Verikloak::BFF::HeaderGuard` in Rails when `Verikloak::Middleware` is absent (e.g., discovery not configured)
+  so that generators and boot sequences no longer fail.
+
 ## [0.2.0] - 2025-09-22
 
 ### Added

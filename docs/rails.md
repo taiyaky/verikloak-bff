@@ -1,6 +1,10 @@
 # Rails Integration Guide
 
 This guide explains how to use verikloak-bff together with Verikloak (core) and verikloak-rails in a Rails application.
+When Rails boots, verikloak-bff automatically inserts its `HeaderGuard` immediately before the core `Verikloak::Middleware`.
+If the core middleware has not been registered (for example because discovery settings are missing), verikloak-bff logs a
+warning and skips insertion so that the application can still boot. Once discovery is configured and the core middleware is
+enabled, restart the application to activate the BFF guard.
 
 ## Prerequisites
 - Ruby >= 3.1, Rails 6.1+ (7.x recommended)
