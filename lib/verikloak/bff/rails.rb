@@ -50,7 +50,7 @@ module Verikloak
         # When the core gem exposes +auto_insert_bff_header_guard+, respect that flag so
         # consumers can opt out of automatic middleware wiring without triggering warnings.
         # Any failures while reading configuration default to enabling insertion in order
-        # to preserve the previous behaviour.
+        # to preserve the previous behavior.
         #
         # @return [Boolean]
         def auto_insert_enabled?
