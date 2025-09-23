@@ -97,19 +97,26 @@ module Verikloak
         def middleware_matches_core?(middleware)
           candidate = middleware.is_a?(Array) ? middleware.first : middleware
 
-          klass = if candidate.respond_to?(:klass)
-                    candidate.klass
-                  elsif candidate.is_a?(Class)
-                    candidate
-                  elsif candidate.respond_to?(:name)
-                    candidate.name
-                  else
-                    candidate
-                  end
+          klass = extract_middleware_class(candidate)
 
           klass == ::Verikloak::Middleware || klass.to_s == 'Verikloak::Middleware'
         end
 
+        # Extracts the class or class-like identifier from a middleware candidate.
+        #
+        # @param candidate [Object]
+        # @return [Class, String, Object]
+        def extract_middleware_class(candidate)
+          if candidate.respond_to?(:klass)
+            candidate.klass
+          elsif candidate.is_a?(Class)
+            candidate
+          elsif candidate.respond_to?(:name)
+            candidate.name
+          else
+            candidate
+          end
+        end
         # Checks if the error indicates missing core Verikloak middleware
         #
         # Examines a RuntimeError to determine if it was caused by attempting
