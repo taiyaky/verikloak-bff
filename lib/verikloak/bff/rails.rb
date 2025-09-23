@@ -29,6 +29,13 @@ module Verikloak
         #     logger: Rails.logger
         #   )
         def insert_after_core(stack, logger: nil)
+          return false unless auto_insert_enabled?
+
+          unless core_present?(stack)
+            log_skip(logger)
+            return false
+          end
+
           stack.insert_after(::Verikloak::Middleware, ::Verikloak::BFF::HeaderGuard)
           true
         rescue RuntimeError => e
@@ -36,6 +43,71 @@ module Verikloak
 
           log_skip(logger)
           false
+        end
+
+        # Determine whether automatic insertion is enabled via Verikloak core configuration.
+        #
+        # When the core gem exposes +auto_insert_bff_header_guard+, respect that flag so
+        # consumers can opt out of automatic middleware wiring without triggering warnings.
+        # Any failures while reading configuration default to enabling insertion in order
+        # to preserve the previous behaviour.
+        #
+        # @return [Boolean]
+        def auto_insert_enabled?
+          return true unless defined?(::Verikloak)
+          return true unless ::Verikloak.respond_to?(:config)
+
+          config = ::Verikloak.config
+          return true unless config
+          return config.auto_insert_bff_header_guard if config.respond_to?(:auto_insert_bff_header_guard)
+
+          true
+        rescue StandardError
+          true
+        end
+
+        # Detect whether the Verikloak core middleware is already present in the stack.
+        #
+        # @param stack [#include?, #each, nil]
+        # @return [Boolean]
+        def core_present?(stack)
+          return false unless stack
+
+          if stack.respond_to?(:include?)
+            begin
+              return true if stack.include?(::Verikloak::Middleware)
+            rescue StandardError
+              # Fall back to manual enumeration when include? is unsupported for this stack
+            end
+          end
+
+          return false unless stack.respond_to?(:each)
+
+          stack.each do |middleware|
+            return true if middleware_matches_core?(middleware)
+          end
+
+          false
+        end
+
+        # Check whether a middleware entry represents the Verikloak core middleware.
+        #
+        # @param middleware [Object]
+        # @return [Boolean]
+        def middleware_matches_core?(middleware)
+          candidate = middleware.is_a?(Array) ? middleware.first : middleware
+
+          klass = if candidate.respond_to?(:klass)
+                    candidate.klass
+                  elsif candidate.is_a?(Class)
+                    candidate
+                  elsif candidate.respond_to?(:name)
+                    candidate.name
+                  else
+                    candidate
+                  end
+
+          klass == ::Verikloak::Middleware || klass.to_s == 'Verikloak::Middleware'
         end
 
         # Checks if the error indicates missing core Verikloak middleware
