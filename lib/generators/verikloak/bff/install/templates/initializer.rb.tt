@@ -1,0 +1,12 @@
+# frozen_string_literal: true
+
+# Configure verikloak-bff to insert its HeaderGuard middleware only after the
+# Verikloak core middleware is present. This avoids boot errors when the core
+# gem has not yet been installed.
+Rails.application.config.after_initialize do
+  logger = defined?(Rails.logger) ? Rails.logger : nil
+  Verikloak::BFF::Rails::Middleware.insert_after_core(
+    Rails.application.config.middleware,
+    logger: logger
+  )
+end

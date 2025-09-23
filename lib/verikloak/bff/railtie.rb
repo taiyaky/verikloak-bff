@@ -5,29 +5,21 @@ require_relative 'rails'
 module Verikloak
   # Module providing Verikloak BFF (Backend for Frontend) functionality
   module BFF
-    # Railtie class for integrating Verikloak BFF middleware into Rails applications
+    # Railtie class for integrating Verikloak BFF with Rails applications.
     #
-    # This class automatically inserts Verikloak::BFF::Rails::Middleware into the
-    # Rails initialization process. The middleware is inserted after the
-    # 'verikloak.middleware' initializer and configured with an appropriate logger.
-    #
-    # @example Automatic initialization in Rails applications
-    #   # Simply adding verikloak-bff to Gemfile automatically enables it
-    #   gem 'verikloak-bff'
-    #
-    # @see Verikloak::BFF::Rails::Middleware
+    # The Railtie no longer inserts middleware automatically because doing so
+    # during `rails g verikloak:install` caused boot failures when the core
+    # Verikloak middleware had not yet been configured. Applications now opt-in
+    # to the HeaderGuard middleware by running `rails g verikloak:bff:install`,
+    # which drops an initializer that performs the insertion during boot.
     class Railtie < ::Rails::Railtie
-      # Initializer that inserts Verikloak BFF middleware into Rails application
-      #
-      # This initializer runs after 'verikloak.middleware' and inserts
-      # Verikloak::BFF::Rails::Middleware at the appropriate position.
-      # Uses Rails.logger as the logger if available.
-      #
-      # @param app [Rails::Application] Rails application instance
-      initializer 'verikloak.bff.insert_middleware', after: 'verikloak.middleware' do |app|
-        logger = ::Rails.logger if defined?(::Rails.logger)
+      # Expose the install generator when Rails generator infrastructure is
+      # available. This keeps the generator optional for non-Rails consumers
+      # while still making it discoverable to `rails g`.
+      initializer 'verikloak.bff.load_generators' do
+        next unless defined?(Rails::Generators)
 
-        Verikloak::BFF::Rails::Middleware.insert_after_core(app.config.middleware, logger: logger)
+        require_relative '../../generators/verikloak/bff/install/install_generator'
       end
     end
   end
