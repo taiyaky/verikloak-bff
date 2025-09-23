@@ -111,14 +111,13 @@ module Verikloak
         def extract_middleware_class(candidate)
           if candidate.respond_to?(:klass)
             candidate.klass
-          elsif candidate.is_a?(Class)
-            candidate
           elsif candidate.respond_to?(:name)
             candidate.name
           else
             candidate
           end
         end
+
         # Checks if the error indicates missing core Verikloak middleware
         #
         # Examines a RuntimeError to determine if it was caused by attempting
@@ -156,11 +155,7 @@ module Verikloak
             [verikloak-bff] Skipping Verikloak::BFF::HeaderGuard insertion because Verikloak::Middleware is not present. Configure verikloak-rails discovery settings and restart once core verification is enabled.
           MSG
 
-          if logger
-            logger.warn(message)
-          else
-            warn(message)
-          end
+          logger ? logger.warn(message) : warn(message)
         end
       end
     end

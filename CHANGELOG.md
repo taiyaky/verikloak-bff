@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.2] - 2025-09-23
+
+### Changed
+- Improved middleware class extraction logic to reduce code duplication while maintaining functionality
+
 ## [0.2.1] - 2025-09-23
 
 ### Fixed
