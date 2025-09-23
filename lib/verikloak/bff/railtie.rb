@@ -5,17 +5,23 @@ require_relative 'rails'
 module Verikloak
   # Module providing Verikloak BFF (Backend for Frontend) functionality
   module BFF
-    # Railtie class for integrating Verikloak BFF with Rails applications.
+    # Railtie for integrating Verikloak BFF with Rails applications.
     #
-    # The Railtie no longer inserts middleware automatically because doing so
-    # during `rails g verikloak:install` caused boot failures when the core
-    # Verikloak middleware had not yet been configured. Applications now opt-in
-    # to the HeaderGuard middleware by running `rails g verikloak:bff:install`,
-    # which drops an initializer that performs the insertion during boot.
+    # This Railtie provides access to the BFF installation generator instead of
+    # automatically inserting middleware, which could cause boot failures when
+    # core Verikloak middleware is not yet configured.
+    #
+    # @example Installing BFF middleware
+    #   rails g verikloak:bff:install
+    #
+    # @see Verikloak::BFF::Rails::Middleware
     class Railtie < ::Rails::Railtie
-      # Expose the install generator when Rails generator infrastructure is
-      # available. This keeps the generator optional for non-Rails consumers
-      # while still making it discoverable to `rails g`.
+      # Loads the install generator when Rails generator infrastructure is available.
+      #
+      # Makes the `verikloak:bff:install` generator discoverable through `rails g`
+      # while keeping generators optional for non-Rails environments.
+      #
+      # @return [void]
       initializer 'verikloak.bff.load_generators' do
         next unless defined?(Rails::Generators)
 

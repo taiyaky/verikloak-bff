@@ -2,12 +2,7 @@
 
 This guide explains how to use verikloak-bff together with Verikloak (core) and verikloak-rails in a Rails application.
 
-To avoid boot errors while the core middleware is being installed, the gem no longer inserts its header guard automatically.
-Instead, run `bin/rails g verikloak:bff:install` after adding the gem. The generator creates an initializer that inserts
-`Verikloak::BFF::HeaderGuard` immediately before the core `Verikloak::Middleware` during boot. If the core middleware has not
-been registered (for example because discovery settings are missing), the initializer logs a warning and skips insertion so the
-application can still boot. Once discovery is configured and the core middleware is enabled, restart the application to
-activate the BFF guard.
+To avoid boot errors while the core middleware is being installed, the gem no longer inserts its header guard automatically. Instead, run `bin/rails g verikloak:bff:install` after adding the gem. The generator creates an initializer that inserts `Verikloak::BFF::HeaderGuard` immediately before the core `Verikloak::Middleware` during boot. If the core middleware has not been registered (for example because discovery settings are missing), the initializer logs a warning and skips insertion so the application can still boot. Once discovery is configured and the core middleware is enabled, restart the application to activate the BFF guard.
 
 ## Prerequisites
 - Ruby >= 3.1, Rails 6.1+ (7.x recommended)
@@ -25,8 +20,7 @@ gem 'verikloak-bff'
 ```
 
 ## 2) BFF configuration
-The generator creates `config/initializers/verikloak_bff.rb`. Extend the file with configuration suitable for your proxy
-topology. The example below uses safe defaults for a proxy chain that appends client IP to XFF.
+The generator creates `config/initializers/verikloak_bff.rb`. Extend the file with configuration suitable for your proxy topology. The example below uses safe defaults for a proxy chain that appends client IP to XFF.
 
 ```ruby
 Verikloak::BFF.configure do |c|
