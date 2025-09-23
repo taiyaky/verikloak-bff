@@ -99,7 +99,9 @@ module Verikloak
 
           klass = extract_middleware_class(candidate)
 
-          klass == ::Verikloak::Middleware || klass.to_s == 'Verikloak::Middleware'
+          klass == ::Verikloak::Middleware ||
+            (klass.is_a?(String) && klass == 'Verikloak::Middleware') ||
+            (klass.respond_to?(:name) && klass.name == 'Verikloak::Middleware')
         end
 
         # Extracts the class or class-like identifier from a middleware candidate.
