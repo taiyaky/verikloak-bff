@@ -12,12 +12,10 @@ module Verikloak
       module Middleware
         module_function
 
-        CORE_MIDDLEWARE = ::Verikloak::Middleware
-        HEADER_GUARD = ::Verikloak::BFF::HeaderGuard
         CORE_NAME = 'Verikloak::Middleware'
-        SKIP_MESSAGE = <<~MSG.freeze
-          [verikloak-bff] Skipping Verikloak::BFF::HeaderGuard insertion because Verikloak::Middleware is not present. Configure
-verikloak-rails discovery settings and restart once core verification is enabled.
+        HEADER_GUARD_NAME = 'Verikloak::BFF::HeaderGuard'
+        SKIP_MESSAGE = <<~MSG.chomp.freeze
+          [verikloak-bff] Skipping Verikloak::BFF::HeaderGuard insertion because Verikloak::Middleware is not present. Configure verikloak-rails discovery settings and restart once core verification is enabled.
         MSG
 
         # Inserts Verikloak::BFF::HeaderGuard middleware after Verikloak::Middleware
@@ -39,12 +37,15 @@ verikloak-rails discovery settings and restart once core verification is enabled
         def insert_after_core(stack, logger: nil)
           return false unless auto_insert_enabled?
 
-          unless stack && core_present?(stack)
+          core = core_middleware
+          header_guard = header_guard_middleware
+
+          unless stack && core && header_guard && core_present?(stack, core)
             log_skip(logger)
             return false
           end
 
-          stack.insert_after(CORE_MIDDLEWARE, HEADER_GUARD)
+          stack.insert_after(core, header_guard)
           true
         rescue RuntimeError => e
           raise unless missing_core?(e)
@@ -88,11 +89,11 @@ verikloak-rails discovery settings and restart once core verification is enabled
         #
         # @param stack [#include?, #each, nil]
         # @return [Boolean]
-        def core_present?(stack)
+        def core_present?(stack, core = core_middleware)
           return false unless stack
 
           begin
-            return true if stack.respond_to?(:include?) && stack.include?(CORE_MIDDLEWARE)
+            return true if core && stack.respond_to?(:include?) && stack.include?(core)
           rescue StandardError
             # Fall back to manual enumeration when include? is unsupported for this stack.
           end
@@ -101,7 +102,8 @@ verikloak-rails discovery settings and restart once core verification is enabled
 
           stack.each do |entry|
             candidate = unwrap_middleware(entry)
-            return true if candidate == CORE_MIDDLEWARE || middleware_name(candidate) == CORE_NAME
+            return true if core && candidate == core
+            return true if middleware_name(candidate) == CORE_NAME
           end
 
           false
@@ -161,6 +163,30 @@ verikloak-rails discovery settings and restart once core verification is enabled
         #   log_skip(nil)
         def log_skip(logger)
           logger ? logger.warn(SKIP_MESSAGE) : warn(SKIP_MESSAGE)
+        end
+
+        # Safely resolves the core middleware constant when available.
+        #
+        # @return [Class, nil]
+        def core_middleware
+          safe_const_get(CORE_NAME)
+        end
+
+        # Safely resolves the HeaderGuard middleware constant when available.
+        #
+        # @return [Class, nil]
+        def header_guard_middleware
+          safe_const_get(HEADER_GUARD_NAME)
+        end
+
+        # Attempts to constantize the provided class name, returning nil when undefined.
+        #
+        # @param name [String]
+        # @return [Module, Class, nil]
+        def safe_const_get(name)
+          Object.const_get(name)
+        rescue NameError
+          nil
         end
       end
     end
