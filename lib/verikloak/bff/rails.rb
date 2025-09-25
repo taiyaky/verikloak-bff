@@ -8,16 +8,16 @@ module Verikloak
       #
       # This module focuses on inserting the HeaderGuard middleware right after
       # the core Verikloak middleware while gracefully handling stacks that do
-      # not contain the core component. The implementation favours small helper
-      # methods to keep the decision making readable.
+      # not contain the core component.
       module Middleware
         module_function
 
-        CORE_CLASS = ::Verikloak::Middleware
+        CORE_MIDDLEWARE = ::Verikloak::Middleware
         HEADER_GUARD = ::Verikloak::BFF::HeaderGuard
         CORE_NAME = 'Verikloak::Middleware'
         SKIP_MESSAGE = <<~MSG.freeze
-          [verikloak-bff] Skipping Verikloak::BFF::HeaderGuard insertion because Verikloak::Middleware is not present. Configure verikloak-rails discovery settings and restart once core verification is enabled.
+          [verikloak-bff] Skipping Verikloak::BFF::HeaderGuard insertion because Verikloak::Middleware is not present. Configure
+verikloak-rails discovery settings and restart once core verification is enabled.
         MSG
 
         # Inserts Verikloak::BFF::HeaderGuard middleware after Verikloak::Middleware
@@ -39,14 +39,12 @@ module Verikloak
         def insert_after_core(stack, logger: nil)
           return false unless auto_insert_enabled?
 
-          return false unless stack
-
-          unless core_present?(stack)
+          unless stack && core_present?(stack)
             log_skip(logger)
             return false
           end
 
-          stack.insert_after(CORE_CLASS, HEADER_GUARD)
+          stack.insert_after(CORE_MIDDLEWARE, HEADER_GUARD)
           true
         rescue RuntimeError => e
           raise unless missing_core?(e)
@@ -64,7 +62,7 @@ module Verikloak
         #
         # @return [Boolean]
         def auto_insert_enabled?
-          config = fetch_core_config
+          config = core_config
           return true unless config
 
           return config.auto_insert_bff_header_guard if config.respond_to?(:auto_insert_bff_header_guard)
@@ -74,30 +72,10 @@ module Verikloak
           true
         end
 
-        # Detect whether the Verikloak core middleware is already present in the stack.
-        #
-        # @param stack [#include?, #each, nil]
-        # @return [Boolean]
-        def core_present?(stack)
-          return false unless stack
-
-          return true if include_core?(stack)
-
-          middleware_entries(stack).any? { |entry| core_entry?(entry) }
-        end
-
-        # Check whether a middleware entry represents the Verikloak core middleware.
-        #
-        # @param entry [Object]
-        # @return [Boolean]
-        def core_entry?(entry)
-          entry == CORE_CLASS || middleware_name(entry) == CORE_NAME
-        end
-
         # Returns the Verikloak configuration object when available.
         #
         # @return [Object, nil]
-        def fetch_core_config
+        def core_config
           return nil unless defined?(::Verikloak)
           return nil unless ::Verikloak.respond_to?(:config)
 
@@ -106,38 +84,36 @@ module Verikloak
           nil
         end
 
-        # Safe wrapper around stack.include? to handle unusual middleware stacks.
+        # Detect whether the Verikloak core middleware is already present in the stack.
         #
-        # @param stack [#include?]
+        # @param stack [#include?, #each, nil]
         # @return [Boolean]
-        def include_core?(stack)
-          return false unless stack.respond_to?(:include?)
+        def core_present?(stack)
+          return false unless stack
 
-          stack.include?(CORE_CLASS)
-        rescue StandardError
+          begin
+            return true if stack.respond_to?(:include?) && stack.include?(CORE_MIDDLEWARE)
+          rescue StandardError
+            # Fall back to manual enumeration when include? is unsupported for this stack.
+          end
+
+          return false unless stack.respond_to?(:each)
+
+          stack.each do |entry|
+            candidate = unwrap_middleware(entry)
+            return true if candidate == CORE_MIDDLEWARE || middleware_name(candidate) == CORE_NAME
+          end
+
           false
         end
 
-        # Enumerate normalized middleware entries.
-        #
-        # @param stack [#each]
-        # @return [Enumerator<Object>]
-        def middleware_entries(stack)
-          return [].to_enum unless stack.respond_to?(:each)
-
-          Enumerator.new do |yielder|
-            stack.each { |entry| yielder << normalize_entry(entry) }
-          end
-        end
-
-        # Convert raw stack entries into class or name identifiers.
+        # Normalize raw stack entries to a comparable object.
         #
         # @param entry [Object]
         # @return [Object]
-        def normalize_entry(entry)
-          candidate = entry.is_a?(Array) ? entry.first : entry
-          candidate = candidate.klass if candidate.respond_to?(:klass)
-          candidate
+        def unwrap_middleware(entry)
+          entry = entry.first if entry.is_a?(Array)
+          entry.respond_to?(:klass) ? entry.klass : entry
         end
 
         # Resolve a human-readable middleware name if possible.
@@ -167,7 +143,7 @@ module Verikloak
         #   end
         def missing_core?(error)
           error.message.include?('No such middleware') &&
-            error.message.include?('Verikloak::Middleware')
+            error.message.include?(CORE_NAME)
         end
 
         # Logs a warning message about skipping middleware insertion
