@@ -40,7 +40,7 @@ module Verikloak
         #
         # @return [void]
         def create_initializer
-          template 'initializer.rb.tt', options.fetch(:initializer)
+          template 'initializer.rb.erb', options.fetch(:initializer)
         end
       end
     end
