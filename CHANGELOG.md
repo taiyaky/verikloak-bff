@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.4] - 2025-09-27
+
+### Changed
+- Simplify BFF install generator by inlining configuration lookups and removing unnecessary helper methods.
+- Streamline generated initializer to use `Rails.configuration.middleware` and `Rails.logger` directly.
+- Extract JWT decoding logic into shared `JwtUtils` module to eliminate duplication between `HeaderGuard` and `ConsistencyChecks`.
+- Refactor `HeaderGuard#call` into clear pipeline stages with improved documentation.
+- Enhance middleware stack detection to handle wrapped entries, string names, and complex objects.
+- Remove duplicate proxy trust logic in `ProxyTrust` module by unifying `from_trusted_proxy?` and `trusted?` methods.
+
+### Fixed
+- Resolve RuboCop style violations including useless constant scoping and identical conditional branches.
+
 ## [0.2.3] - 2025-09-23
 
 ### Changed
