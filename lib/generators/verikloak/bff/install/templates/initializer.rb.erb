@@ -5,7 +5,7 @@
 # gem has not yet been installed.
 Rails.application.config.after_initialize do
   Verikloak::BFF::Rails::Middleware.insert_after_core(
-    Rails.configuration.middleware,
+    Rails.application.config.middleware,
     logger: Rails.logger
   )
 end
