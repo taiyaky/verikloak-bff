@@ -40,16 +40,7 @@ module Verikloak
         #
         # @return [void]
         def create_initializer
-          template 'initializer.rb.tt', initializer_path
-        end
-
-        private
-
-        # Returns the path where the initializer should be created.
-        #
-        # @return [String] The initializer file path from options
-        def initializer_path
-          options[:initializer]
+          template 'initializer.rb.erb', options.fetch(:initializer)
         end
       end
     end

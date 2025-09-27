@@ -4,13 +4,19 @@ module Verikloak
   module BFF
     # Rails-specific functionality for Verikloak BFF
     module Rails
-      # Middleware management utilities for Rails applications
+      # Middleware management utilities for Rails applications.
       #
-      # This module provides functionality to insert Verikloak BFF middleware
-      # into Rails middleware stack, with proper error handling for cases where
-      # the core Verikloak middleware is not present.
+      # This module focuses on inserting the HeaderGuard middleware right after
+      # the core Verikloak middleware while gracefully handling stacks that do
+      # not contain the core component.
       module Middleware
         module_function
+
+        CORE_NAME = 'Verikloak::Middleware'
+        HEADER_GUARD_NAME = 'Verikloak::BFF::HeaderGuard'
+        SKIP_MESSAGE = <<~MSG.chomp.freeze
+          [verikloak-bff] Skipping Verikloak::BFF::HeaderGuard insertion because Verikloak::Middleware is not present. Configure verikloak-rails discovery settings and restart once core verification is enabled.
+        MSG
 
         # Inserts Verikloak::BFF::HeaderGuard middleware after Verikloak::Middleware
         #
@@ -31,12 +37,15 @@ module Verikloak
         def insert_after_core(stack, logger: nil)
           return false unless auto_insert_enabled?
 
-          unless core_present?(stack)
+          core = core_middleware
+          header_guard = header_guard_middleware
+
+          unless stack && core && header_guard && core_present?(stack, core)
             log_skip(logger)
             return false
           end
 
-          stack.insert_after(::Verikloak::Middleware, ::Verikloak::BFF::HeaderGuard)
+          stack.insert_after(core, header_guard)
           true
         rescue RuntimeError => e
           raise unless missing_core?(e)
@@ -54,11 +63,9 @@ module Verikloak
         #
         # @return [Boolean]
         def auto_insert_enabled?
-          return true unless defined?(::Verikloak)
-          return true unless ::Verikloak.respond_to?(:config)
-
-          config = ::Verikloak.config
+          config = core_config
           return true unless config
+
           return config.auto_insert_bff_header_guard if config.respond_to?(:auto_insert_bff_header_guard)
 
           true
@@ -66,56 +73,60 @@ module Verikloak
           true
         end
 
+        # Returns the Verikloak configuration object when available.
+        #
+        # @return [Object, nil]
+        def core_config
+          return nil unless defined?(::Verikloak)
+          return nil unless ::Verikloak.respond_to?(:config)
+
+          ::Verikloak.config
+        rescue StandardError
+          nil
+        end
+
         # Detect whether the Verikloak core middleware is already present in the stack.
         #
         # @param stack [#include?, #each, nil]
         # @return [Boolean]
-        def core_present?(stack)
+        def core_present?(stack, core = core_middleware)
           return false unless stack
 
-          if stack.respond_to?(:include?)
-            begin
-              return true if stack.include?(::Verikloak::Middleware)
-            rescue StandardError
-              # Fall back to manual enumeration when include? is unsupported for this stack
-            end
+          begin
+            return true if core && stack.respond_to?(:include?) && stack.include?(core)
+          rescue StandardError
+            # Fall back to manual enumeration when include? is unsupported for this stack.
           end
 
           return false unless stack.respond_to?(:each)
 
-          stack.each do |middleware|
-            return true if middleware_matches_core?(middleware)
+          stack.each do |entry|
+            candidate = unwrap_middleware(entry)
+            return true if core && candidate == core
+            return true if middleware_name(candidate) == CORE_NAME
           end
 
           false
         end
 
-        # Check whether a middleware entry represents the Verikloak core middleware.
+        # Normalize raw stack entries to a comparable object.
         #
-        # @param middleware [Object]
-        # @return [Boolean]
-        def middleware_matches_core?(middleware)
-          candidate = middleware.is_a?(Array) ? middleware.first : middleware
-
-          klass = extract_middleware_class(candidate)
-
-          klass == ::Verikloak::Middleware ||
-            (klass.is_a?(String) && klass == 'Verikloak::Middleware') ||
-            (klass.respond_to?(:name) && klass.name == 'Verikloak::Middleware')
+        # @param entry [Object]
+        # @return [Object]
+        def unwrap_middleware(entry)
+          entry = entry.first if entry.is_a?(Array)
+          entry.respond_to?(:klass) ? entry.klass : entry
         end
 
-        # Extracts the class or class-like identifier from a middleware candidate.
+        # Resolve a human-readable middleware name if possible.
         #
-        # @param candidate [Object]
-        # @return [Class, String, Object]
-        def extract_middleware_class(candidate)
-          if candidate.respond_to?(:klass)
-            candidate.klass
-          elsif candidate.respond_to?(:name)
-            candidate.name
-          else
-            candidate
-          end
+        # @param entry [Object]
+        # @return [String, nil]
+        def middleware_name(entry)
+          return entry if entry.is_a?(String)
+          return entry.to_s if entry.is_a?(Symbol)
+
+          entry.respond_to?(:name) ? entry.name : nil
         end
 
         # Checks if the error indicates missing core Verikloak middleware
@@ -134,7 +145,7 @@ module Verikloak
         #   end
         def missing_core?(error)
           error.message.include?('No such middleware') &&
-            error.message.include?('Verikloak::Middleware')
+            error.message.include?(CORE_NAME)
         end
 
         # Logs a warning message about skipping middleware insertion
@@ -151,11 +162,31 @@ module Verikloak
         # @example Logging without logger (uses warn)
         #   log_skip(nil)
         def log_skip(logger)
-          message = <<~MSG.chomp
-            [verikloak-bff] Skipping Verikloak::BFF::HeaderGuard insertion because Verikloak::Middleware is not present. Configure verikloak-rails discovery settings and restart once core verification is enabled.
-          MSG
+          logger ? logger.warn(SKIP_MESSAGE) : warn(SKIP_MESSAGE)
+        end
 
-          logger ? logger.warn(message) : warn(message)
+        # Safely resolves the core middleware constant when available.
+        #
+        # @return [Class, nil]
+        def core_middleware
+          safe_const_get(CORE_NAME)
+        end
+
+        # Safely resolves the HeaderGuard middleware constant when available.
+        #
+        # @return [Class, nil]
+        def header_guard_middleware
+          safe_const_get(HEADER_GUARD_NAME)
+        end
+
+        # Attempts to constantize the provided class name, returning nil when undefined.
+        #
+        # @param name [String]
+        # @return [Module, Class, nil]
+        def safe_const_get(name)
+          Object.const_get(name)
+        rescue NameError
+          nil
         end
       end
     end

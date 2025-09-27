@@ -14,7 +14,7 @@ Gem::Specification.new do |spec|
   spec.homepage      = 'https://github.com/taiyaky/verikloak-bff'
   spec.license       = 'MIT'
 
-  spec.files         = Dir['lib/**/*.rb'] + %w[README.md LICENSE CHANGELOG.md]
+  spec.files         = Dir['lib/**/*.{rb,erb}'] + %w[README.md LICENSE CHANGELOG.md]
   spec.require_paths = ['lib']
 
   spec.required_ruby_version = '>= 3.1'

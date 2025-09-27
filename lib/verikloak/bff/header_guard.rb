@@ -13,7 +13,6 @@
 require 'rack'
 require 'rack/utils'
 require 'json'
-require 'jwt'
 require 'digest'
 require 'verikloak/header_sources'
 require 'verikloak/bff/configuration'
@@ -22,6 +21,7 @@ require 'verikloak/bff/proxy_trust'
 require 'verikloak/bff/forwarded_token'
 require 'verikloak/bff/consistency_checks'
 require 'verikloak/bff/constants'
+require 'verikloak/bff/jwt_utils'
 
 module Verikloak
   module BFF
@@ -58,11 +58,7 @@ module Verikloak
       # @param token [String, nil]
       # @return [Array<Hash>] payload and header hashes
       def decode_unverified(token)
-        return [{}, {}] if token.nil? || token.bytesize > Constants::MAX_TOKEN_BYTES
-
-        JWT.decode(token, nil, false)
-      rescue StandardError
-        [{}, {}]
+        Verikloak::BFF::JwtUtils.decode_unverified(token)
       end
 
       # Remove unsafe characters from a structured logging payload.
@@ -104,6 +100,8 @@ module Verikloak
 
     # Rack middleware that enforces BFF boundary and header/claims consistency.
     class HeaderGuard
+      RequestTokens = Struct.new(:auth, :forwarded, :chosen)
+
       # Accept both Rack 2 and Rack 3 builder call styles:
       # - new(app, key: val)
       # - new(app, { key: val })
@@ -125,28 +123,70 @@ module Verikloak
         raise ArgumentError, 'trusted_proxies must be configured'
       end
 
-      # Process a Rack request.
+      # Process a Rack request through the BFF header guard pipeline.
+      #
+      # Pipeline stages:
+      # 1. Proxy trust validation
+      # 2. Token extraction and state building
+      # 3. Policy enforcement (forwarded token requirements, consistency checks)
+      # 4. Request finalization (Authorization header normalization)
       #
       # @param env [Hash]
       # @return [Array(Integer, Hash, Array<#to_s>)] Rack response triple
       def call(env)
+        # Stage 1: Validate request comes from trusted proxy
         ensure_trusted_proxy!(env)
-        auth_token, fwd_token = ForwardedToken.extract(env, @config.forwarded_header_name)
-        ensure_forwarded_if_required!(fwd_token)
-        chosen = choose_token(auth_token, fwd_token)
-        chosen = seed_authorization_if_needed(env, chosen)
 
-        enforce_header_consistency!(env, auth_token, fwd_token)
-        enforce_claims_consistency!(env, chosen)
-        ForwardedToken.strip_suspicious!(env, @config.auth_request_headers) if @config.strip_suspicious_headers
-        normalize_authorization!(env, chosen, auth_token, fwd_token)
-        expose_env_hints(env, chosen)
+        # Stage 2: Extract and validate tokens, build request state
+        tokens = build_token_state(env)
+
+        # Stage 3: Enforce configured policies (forwarded requirements, consistency)
+        enforce_token_policies!(env, tokens)
+
+        # Stage 4: Finalize request with normalized Authorization header
+        finalize_request!(env, tokens)
+
         @app.call(env)
       rescue Verikloak::BFF::Error => e
         respond_with_error(env, e)
       end
 
       private
+
+      # Build token state by extracting, validating, and selecting the active token.
+      #
+      # @param env [Hash]
+      # @return [RequestTokens]
+      def build_token_state(env)
+        auth_token, fwd_token = ForwardedToken.extract(env, @config.forwarded_header_name)
+        ensure_forwarded_if_required!(fwd_token)
+
+        chosen = choose_token(auth_token, fwd_token)
+        chosen = seed_authorization_if_needed(env, chosen)
+
+        RequestTokens.new(auth_token, fwd_token, chosen)
+      end
+
+      # Apply header and claim consistency policies for the current request.
+      #
+      # @param env [Hash]
+      # @param tokens [RequestTokens]
+      # @return [void]
+      def enforce_token_policies!(env, tokens)
+        enforce_header_consistency!(env, tokens.auth, tokens.forwarded)
+        enforce_claims_consistency!(env, tokens.chosen)
+      end
+
+      # Mutate the Rack env with normalized headers and logging hints.
+      #
+      # @param env [Hash]
+      # @param tokens [RequestTokens]
+      # @return [void]
+      def finalize_request!(env, tokens)
+        ForwardedToken.strip_suspicious!(env, @config.auth_request_headers) if @config.strip_suspicious_headers
+        normalize_authorization!(env, tokens.chosen, tokens.auth, tokens.forwarded)
+        expose_env_hints(env, tokens.chosen)
+      end
 
       # Apply per-instance configuration overrides.
       #

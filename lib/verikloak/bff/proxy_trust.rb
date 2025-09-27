@@ -23,17 +23,8 @@ module Verikloak
       # @example CIDR + Regex allowlist
       #   ProxyTrust.trusted?(env, ["10.0.0.0/8", /^192\.168\./], :rightmost)
       def trusted?(env, trusted, strategy = :rightmost)
-        return false if trusted.nil? || trusted.empty?
-
-        # Rails-aligned: prefer REMOTE_ADDR; fallback to nearest XFF entry
-        remote = (env['REMOTE_ADDR'] || '').to_s.strip
-        remote = extract_peer_ip(env, strategy) if remote.empty?
-        return false unless remote
-
-        remote_ip = ip_or_nil(remote)
-        trusted.any? { |rule| rule_trusts?(rule, remote, remote_ip, env) }
-      rescue StandardError
-        false
+        remote = resolve_peer(env, :remote_then_xff, strategy)
+        trusted_remote?(remote, trusted, env)
       end
 
       # Select the peer IP from X-Forwarded-For according to strategy or fall back to REMOTE_ADDR.
@@ -59,15 +50,7 @@ module Verikloak
       # @param strategy [Symbol] :rightmost or :leftmost
       # @return [String, nil]
       def selected_peer(env, preference, strategy)
-        case preference.to_s.to_sym
-        when :remote_then_xff
-          ip = (env['REMOTE_ADDR'] || '').to_s.strip
-          return ip unless ip.nil? || ip.empty?
-
-          extract_peer_ip(env, :rightmost) # nearest by default
-        else
-          extract_peer_ip(env, strategy)
-        end
+        resolve_peer(env, preference, strategy)
       end
 
       # Parse string to IPAddr or nil on failure.
@@ -112,16 +95,37 @@ module Verikloak
       # @param trusted [Array<String, Regexp, Proc>, nil]
       # @return [Boolean]
       def self.from_trusted_proxy?(env, trusted)
+        trusted?(env, trusted, :rightmost)
+      end
+
+      # Resolve the peer value based on preference and strategy.
+      #
+      # @param env [Hash]
+      # @param preference [Symbol]
+      # @param strategy [Symbol]
+      # @return [String, nil]
+      def resolve_peer(env, preference, strategy)
+        case preference.to_s.to_sym
+        when :remote_then_xff
+          remote = (env['REMOTE_ADDR'] || '').to_s.strip
+          return remote unless remote.empty?
+          # Fall back to X-Forwarded-For when REMOTE_ADDR is empty
+        end
+        extract_peer_ip(env, strategy)
+      end
+
+      # Determine whether a remote peer appears in the trusted list.
+      #
+      # @param remote [String, nil]
+      # @param trusted [Array<String, Regexp, Proc>, nil]
+      # @param env [Hash]
+      # @return [Boolean]
+      def trusted_remote?(remote, trusted, env)
         return false if trusted.nil? || trusted.empty?
+        return false unless remote
 
-        ip = (env['REMOTE_ADDR'] || '').to_s.strip
-        ip = env['HTTP_X_FORWARDED_FOR'].to_s.split(',').last.to_s.strip if ip.empty? && env['HTTP_X_FORWARDED_FOR']
-        return false if ip.empty?
-
-        remote_ip = ip_or_nil(ip)
-        return false unless remote_ip
-
-        trusted.any? { |rule| rule_trusts?(rule, ip, remote_ip, env) }
+        remote_ip = ip_or_nil(remote)
+        trusted.any? { |rule| rule_trusts?(rule, remote, remote_ip, env) }
       rescue StandardError
         false
       end
