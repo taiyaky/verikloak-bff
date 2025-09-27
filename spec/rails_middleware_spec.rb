@@ -18,6 +18,40 @@ RSpec.describe Verikloak::BFF::Rails::Middleware do
       expect(described_class.insert_after_core(stack, logger: nil)).to be(true)
     end
 
+    it 'detects the core middleware when it is referenced by string name' do
+      allow(stack).to receive(:include?).and_return(false)
+      allow(stack).to receive(:each).and_yield('Verikloak::Middleware')
+      expect(stack).to receive(:insert_after).with(Verikloak::Middleware, Verikloak::BFF::HeaderGuard)
+
+      expect(described_class.insert_after_core(stack, logger: nil)).to be(true)
+    end
+
+    it 'detects the core middleware when wrapped in an array entry' do
+      allow(stack).to receive(:include?).and_return(false)
+      allow(stack).to receive(:each).and_yield([Verikloak::Middleware, {}])
+      expect(stack).to receive(:insert_after).with(Verikloak::Middleware, Verikloak::BFF::HeaderGuard)
+
+      expect(described_class.insert_after_core(stack, logger: nil)).to be(true)
+    end
+
+    it 'detects the core middleware when wrapped in a middleware entry with args' do
+      middleware_entry = double('MiddlewareEntry', klass: Verikloak::Middleware, args: [])
+      allow(stack).to receive(:include?).and_return(false)
+      allow(stack).to receive(:each).and_yield(middleware_entry)
+      expect(stack).to receive(:insert_after).with(Verikloak::Middleware, Verikloak::BFF::HeaderGuard)
+
+      expect(described_class.insert_after_core(stack, logger: nil)).to be(true)
+    end
+
+    it 'detects the core middleware by name when stack contains complex objects' do
+      complex_object = double('ComplexObject', name: 'Verikloak::Middleware')
+      allow(stack).to receive(:include?).and_return(false)
+      allow(stack).to receive(:each).and_yield(complex_object)
+      expect(stack).to receive(:insert_after).with(Verikloak::Middleware, Verikloak::BFF::HeaderGuard)
+
+      expect(described_class.insert_after_core(stack, logger: nil)).to be(true)
+    end
+
     it 'skips insertion with a warning when the core middleware is missing' do
       allow(stack).to receive(:each)
       logger = instance_double('Logger')

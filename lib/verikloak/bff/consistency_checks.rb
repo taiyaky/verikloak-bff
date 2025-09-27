@@ -6,8 +6,8 @@
 # @see .enforce!
 
 require 'json'
-require 'jwt' # used only to parse segments safely without verify
 require 'verikloak/bff/constants'
+require 'verikloak/bff/jwt_utils'
 
 module Verikloak
   module BFF
@@ -21,12 +21,7 @@ module Verikloak
       # @param token [String, nil]
       # @return [Hash] claims or empty hash on error
       def decode_claims(token)
-        return {} unless token
-        return {} if token.bytesize > Constants::MAX_TOKEN_BYTES
-
-        JWT.decode(token, nil, false).first
-      rescue StandardError
-        {}
+        Verikloak::BFF::JwtUtils.decode_claims(token)
       end
 
       # mapping: { email: :email, user: :sub, groups: :realm_roles }
