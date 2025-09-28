@@ -91,32 +91,23 @@ RSpec.describe Verikloak::BFF::Rails::Middleware do
     end
 
     it 'gracefully handles when verikloak gem is not loaded' do
-      # Temporarily hide the Verikloak constant to simulate unloaded gem
-      verikloak_backup = Object.send(:remove_const, :Verikloak) if defined?(Verikloak)
-      
+      hide_const('Verikloak')
+
       expect(stack).not_to receive(:insert_after)
       logger = instance_double('Logger')
       expect(logger).to receive(:warn).with(a_string_matching('Skipping Verikloak::BFF::HeaderGuard insertion'))
 
       expect(described_class.insert_after_core(stack, logger: logger)).to be(false)
-    ensure
-      Object.const_set(:Verikloak, verikloak_backup) if verikloak_backup
     end
 
     it 'handles when Verikloak::Middleware constant is not defined' do
-      # Temporarily hide the Middleware constant to simulate unconfigured verikloak
-      middleware_backup = nil
-      if defined?(Verikloak::Middleware)
-        middleware_backup = Verikloak.send(:remove_const, :Middleware)
-      end
-      
+      hide_const('Verikloak::Middleware')
+
       expect(stack).not_to receive(:insert_after)
       logger = instance_double('Logger')
       expect(logger).to receive(:warn).with(a_string_matching('Skipping Verikloak::BFF::HeaderGuard insertion'))
 
       expect(described_class.insert_after_core(stack, logger: logger)).to be(false)
-    ensure
-      Verikloak.const_set(:Middleware, middleware_backup) if middleware_backup
     end
   end
 end
