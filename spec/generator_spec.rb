@@ -64,9 +64,6 @@ RSpec.describe 'Verikloak::Bff::Generators::InstallGenerator' do
     if defined?(Verikloak::Bff::Generators::InstallGenerator)
       Verikloak::Bff::Generators.send(:remove_const, :InstallGenerator)
     end
-    if defined?(Verikloak::BFF::Generators)
-      Verikloak::BFF.send(:remove_const, :Generators)
-    end
 
     load File.expand_path('../lib/generators/verikloak/bff/install/install_generator.rb', __dir__)
   end
