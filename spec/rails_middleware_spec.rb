@@ -89,5 +89,25 @@ RSpec.describe Verikloak::BFF::Rails::Middleware do
     ensure
       Verikloak.config = nil
     end
+
+    it 'gracefully handles when verikloak gem is not loaded' do
+      hide_const('Verikloak')
+
+      expect(stack).not_to receive(:insert_after)
+      logger = instance_double('Logger')
+      expect(logger).to receive(:warn).with(a_string_matching('Skipping Verikloak::BFF::HeaderGuard insertion'))
+
+      expect(described_class.insert_after_core(stack, logger: logger)).to be(false)
+    end
+
+    it 'handles when Verikloak::Middleware constant is not defined' do
+      hide_const('Verikloak::Middleware')
+
+      expect(stack).not_to receive(:insert_after)
+      logger = instance_double('Logger')
+      expect(logger).to receive(:warn).with(a_string_matching('Skipping Verikloak::BFF::HeaderGuard insertion'))
+
+      expect(described_class.insert_after_core(stack, logger: logger)).to be(false)
+    end
   end
 end
