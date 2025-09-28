@@ -2,10 +2,13 @@
 
 require "spec_helper"
 require "fileutils"
+require "tmpdir"
 
 RSpec.describe 'Verikloak::Bff::Generators::InstallGenerator' do
   before do
     # Provide a fake Rails::Generators base with minimal API
+    stub_const('Thor::Error', Class.new(StandardError))
+
     base_class = Class.new do
       class << self
         def source_root(path = nil)
@@ -13,7 +16,7 @@ RSpec.describe 'Verikloak::Bff::Generators::InstallGenerator' do
           @source_root
         end
 
-        def desc(*); end
+        def desc(_description = nil); end
         
         def class_option(name, type:, default: nil, **options)
           class_options[name.to_sym] = { type: type, default: default }.merge(options)
@@ -35,9 +38,10 @@ RSpec.describe 'Verikloak::Bff::Generators::InstallGenerator' do
       end
 
       def template(src, dest)
+        src_path = File.join(self.class.source_root, src)
+        raise Thor::Error, "Could not find template #{src}" unless File.exist?(src_path)
         FileUtils.mkdir_p(File.dirname(dest))
-        # Create a simple mock file with expected content instead of copying template
-        File.write(dest, "# Verikloak BFF Configuration\n# Include Verikloak::BFF::Rails::Middleware\n")
+        FileUtils.cp(src_path, dest)
       end
 
       private

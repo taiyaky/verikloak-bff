@@ -34,7 +34,8 @@ end
 
 # Maintain legacy constant path for consumers referencing Verikloak::BFF::Generators.
 module Verikloak
+  # Legacy namespace alias for backward compatibility.
   module BFF
-    Generators = Bff::Generators
+    Generators = Bff::Generators unless defined?(Generators)
   end
 end
