@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.5] - 2025-09-28
+
+### Changed
+- Align the install generator under `Verikloak::Bff::Generators` while retaining the `Verikloak::BFF::Generators` alias to avoid constant redefinition warnings during reloads.
+
+
 ## [0.2.4] - 2025-09-27
 
 ### Changed
