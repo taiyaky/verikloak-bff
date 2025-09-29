@@ -16,7 +16,7 @@ GEM
       thor (~> 1.0)
     diff-lcs (1.6.2)
     docile (1.4.1)
-    faraday (2.13.4)
+    faraday (2.14.0)
       faraday-net_http (>= 2.0, < 3.5)
       json
       logger
@@ -24,7 +24,7 @@ GEM
       net-http (>= 0.5.0)
     faraday-retry (2.3.2)
       faraday (~> 2.0)
-    json (2.14.1)
+    json (2.15.0)
     jwt (3.1.2)
       base64
     language_server-protocol (3.17.0.5)
@@ -91,7 +91,7 @@ GEM
       unicode-emoji (~> 4.1)
     unicode-emoji (4.1.0)
     uri (1.0.3)
-    verikloak (0.2.0)
+    verikloak (0.2.1)
       faraday (>= 2.0, < 3.0)
       faraday-retry (>= 2.0, < 3.0)
       json (~> 2.6)
