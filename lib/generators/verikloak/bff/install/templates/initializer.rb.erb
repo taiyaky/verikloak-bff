@@ -1,11 +1,115 @@
 # frozen_string_literal: true
 
-# Configure verikloak-bff to insert its HeaderGuard middleware only after the
-# Verikloak core middleware is present. This avoids boot errors when the core
-# gem has not yet been installed.
-Rails.application.config.after_initialize do
-  Verikloak::BFF::Rails::Middleware.insert_after_core(
-    Rails.application.config.middleware,
-    logger: Rails.logger
-  )
+# Verikloak BFF Configuration
+#
+# This file configures the Verikloak::BFF::HeaderGuard middleware.
+#
+# IMPORTANT: Middleware insertion is handled automatically by verikloak-rails.
+# Make sure you have both gems in your Gemfile:
+#
+#   gem 'verikloak-rails'
+#   gem 'verikloak-bff'
+#
+# The middleware stack will be configured as:
+#   [Verikloak::BFF::HeaderGuard] → [Verikloak::Middleware] → [Your App]
+#
+# If you are NOT using verikloak-rails, you must manually insert the middleware
+# in config/application.rb (NOT in after_initialize, which causes FrozenError in Rails 8.x+):
+#
+#   config.middleware.insert_before Verikloak::Middleware, Verikloak::BFF::HeaderGuard
+#
+Verikloak::BFF.configure do |config|
+  # ==========================================================================
+  # Trust Boundary (REQUIRED)
+  # ==========================================================================
+  # Allowlist for trusted proxy peers. Requests from untrusted peers are rejected.
+  # Supports IP addresses, CIDR ranges, Regexp, or Proc.
+  #
+  # SECURITY: Keep this list as specific as possible. Review whenever proxy
+  # topology changes to avoid unintentionally widening the trust boundary.
+  #
+  config.trusted_proxies = ENV.fetch('TRUSTED_PROXIES', '127.0.0.1').split(',').map(&:strip)
+
+  # ==========================================================================
+  # Peer Selection
+  # ==========================================================================
+  # How to determine the client's peer IP for trust decisions.
+  #
+  # :remote_then_xff (default) - Prefer REMOTE_ADDR, then fall back to XFF
+  # :xff_only                  - Use only X-Forwarded-For header
+  #
+  # config.peer_preference = :remote_then_xff
+
+  # Which X-Forwarded-For entry to use when multiple proxies are involved.
+  #
+  # :rightmost (default) - Nearest proxy (recommended for most setups)
+  # :leftmost            - Original client (use only if you trust all proxies)
+  #
+  # config.xff_strategy = :rightmost
+
+  # ==========================================================================
+  # Token Selection & Header Handling
+  # ==========================================================================
+  # Prefer X-Forwarded-Access-Token over Authorization header.
+  #
+  # config.prefer_forwarded = true
+
+  # Reject requests without X-Forwarded-Access-Token (blocks direct access).
+  # Enable this to ensure all requests go through the BFF proxy.
+  #
+  # config.require_forwarded_header = false
+
+  # Require Authorization and X-Forwarded-Access-Token to contain the same token
+  # when both are present.
+  #
+  # config.enforce_header_consistency = true
+
+  # Remove external X-Auth-Request-* headers before passing downstream.
+  # Prevents header injection attacks.
+  #
+  # config.strip_suspicious_headers = true
+
+  # ==========================================================================
+  # Claims Consistency (Optional)
+  # ==========================================================================
+  # Compare X-Auth-Request-* headers against JWT claims.
+  # Useful for detecting token substitution attacks.
+  #
+  # config.enforce_claims_consistency = {
+  #   email: :email,           # X-Auth-Request-Email == JWT email claim
+  #   user: :sub,              # X-Auth-Request-User == JWT sub claim
+  #   groups: :realm_roles     # X-Auth-Request-Groups ⊆ JWT realm_access.roles
+  # }
+
+  # :enforce (default) - Reject mismatches with 403
+  # :log_only          - Log mismatches but allow request to proceed
+  #
+  # config.claims_consistency_mode = :enforce
+
+  # ==========================================================================
+  # Header Name Customization
+  # ==========================================================================
+  # Customize forwarded token header name (if your proxy uses a different header).
+  #
+  # config.forwarded_header_name = 'HTTP_X_FORWARDED_ACCESS_TOKEN'
+
+  # Customize X-Auth-Request-* header names.
+  #
+  # config.auth_request_headers = {
+  #   email:  'HTTP_X_AUTH_REQUEST_EMAIL',
+  #   user:   'HTTP_X_AUTH_REQUEST_USER',
+  #   groups: 'HTTP_X_AUTH_REQUEST_GROUPS'
+  # }
+
+  # Priority list for seeding Authorization header when empty.
+  #
+  # config.token_header_priority = ['HTTP_X_FORWARDED_ACCESS_TOKEN']
+
+  # ==========================================================================
+  # Logging
+  # ==========================================================================
+  # Structured logging hook for observability.
+  # Payload includes: rid (request_id), sub, kid, iss, aud
+  #
+  # config.log_with = ->(payload) { Rails.logger.info(payload.to_json) }
 end

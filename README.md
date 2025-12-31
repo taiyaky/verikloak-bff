@@ -31,16 +31,25 @@ use Verikloak::BFF::HeaderGuard, trusted_proxies: ['127.0.0.1', '10.0.0.0/8']
 ```
 
 ### Rails Applications
-Add the gem to your Gemfile and run the install generator to drop an initializer that wires the middleware into Rails:
+Add both gems to your Gemfile:
 ```ruby
+gem 'verikloak-rails'
 gem 'verikloak-bff'
 ```
 
+Run the install generator to create a configuration file:
 ```sh
 bin/rails g verikloak:bff:install
 ```
 
-The generated initializer inserts `Verikloak::BFF::HeaderGuard` after the core `Verikloak::Middleware` during boot. If the core middleware is not present (for example, when verikloak-rails has not been fully configured yet), the initializer logs a warning and allows Rails to boot normally.
+The generator creates `config/initializers/verikloak_bff.rb` with BFF configuration options. **Edit this file to set `trusted_proxies`** (required) and customize other options as needed.
+
+**Note**: Middleware insertion is handled automatically by `verikloak-rails`. The generated initializer only contains configuration—no manual middleware setup is required.
+
+> **Without verikloak-rails**: You can also configure middleware manually in `config/application.rb`:
+> ```ruby
+> config.middleware.insert_before Verikloak::Middleware, Verikloak::BFF::HeaderGuard
+> ```
 
 For detailed configuration, proxy setup examples, and troubleshooting, see [docs/rails.md](docs/rails.md).
 
@@ -109,6 +118,89 @@ For full reverse proxy examples (Nginx auth_request / oauth2-proxy), see [docs/r
 
 - Claims consistency modes
   - Default `:enforce` mode rejects requests with mismatches. Switch to `claims_consistency_mode: :log_only` when you only need observability signals; downstream services must continue verifying JWT signatures, issuer, audience, and expirations.
+
+## Rails Integration
+
+### Recommended: Use with verikloak-rails (Auto-detection)
+
+When both `verikloak-rails` and `verikloak-bff` are installed, the railtie automatically inserts the BFF middleware. No manual configuration is required.
+
+```ruby
+# Gemfile
+gem 'verikloak-rails'
+gem 'verikloak-bff'
+```
+
+The middleware stack will be configured as:
+```
+[Verikloak::Bff::HeaderGuard] → [Verikloak::Middleware] → [Your App]
+```
+
+### ⚠️ Rails 8.x+ Middleware Stack Freeze
+
+In Rails 8.x and later, the middleware stack is frozen after the `after_initialize` callback. Manual middleware insertion in `after_initialize` will raise `FrozenError`:
+
+```ruby
+# ❌ This will NOT work in Rails 8.x+
+Rails.application.config.after_initialize do
+  Rails.application.config.middleware.insert_after(
+    Verikloak::Middleware,
+    Verikloak::BFF::HeaderGuard
+  )
+end
+# => FrozenError: can't modify frozen Array
+```
+
+**Solution**: Use the automatic detection feature with `verikloak-rails`, or insert middleware in `config/application.rb` or an initializer (which runs before the stack is frozen):
+
+```ruby
+# ✅ This works - config/application.rb
+module MyApp
+  class Application < Rails::Application
+    config.middleware.insert_before Verikloak::Middleware, Verikloak::Bff::HeaderGuard
+  end
+end
+```
+
+## oauth2-proxy Integration
+
+### Header Configuration Reference
+
+| oauth2-proxy Setting | Header Sent | HeaderGuard Behavior |
+|---------------------|-------------|---------------------|
+| `--pass-access-token=true` | Cookie (`_oauth2_proxy`) | Not supported (cookie-based) |
+| `--set-authorization-header=true` | `Authorization: Bearer <token>` | Used directly |
+| `--set-xauthrequest=true` | `X-Auth-Request-Access-Token` | Normalized to `Authorization` |
+
+### Recommended oauth2-proxy Configuration
+
+```bash
+oauth2-proxy \
+  --pass-access-token=false \
+  --set-authorization-header=false \
+  --set-xauthrequest=true \
+  --upstream=http://rails-api:3000
+```
+
+This configuration forwards the access token via `X-Auth-Request-Access-Token`, which HeaderGuard normalizes to the `Authorization` header for downstream Verikloak middleware.
+
+### Header Normalization
+
+HeaderGuard normalizes tokens from the following headers (in priority order):
+
+1. `X-Forwarded-Access-Token` (default)
+2. Headers listed in `token_header_priority` configuration
+
+To customize which headers are checked:
+
+```ruby
+use Verikloak::BFF::HeaderGuard,
+  trusted_proxies: ['10.0.0.0/8'],
+  token_header_priority: [
+    'HTTP_X_FORWARDED_ACCESS_TOKEN',
+    'HTTP_X_AUTH_REQUEST_ACCESS_TOKEN'
+  ]
+```
 
 ## Development (for contributors)
 Clone and install dependencies:

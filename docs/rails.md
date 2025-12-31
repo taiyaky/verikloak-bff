@@ -2,10 +2,17 @@
 
 This guide explains how to use verikloak-bff together with Verikloak (core) and verikloak-rails in a Rails application.
 
-To avoid boot errors while the core middleware is being installed, the gem no longer inserts its header guard automatically. Instead, run `bin/rails g verikloak:bff:install` after adding the gem. The generator creates an initializer that inserts `Verikloak::BFF::HeaderGuard` immediately before the core `Verikloak::Middleware` during boot. If the core middleware has not been registered (for example because discovery settings are missing), the initializer logs a warning and skips insertion so the application can still boot. Once discovery is configured and the core middleware is enabled, restart the application to activate the BFF guard.
+## How It Works
+
+When both `verikloak-rails` and `verikloak-bff` are installed, the `verikloak-rails` railtie **automatically detects and inserts** the BFF middleware. The generator (`bin/rails g verikloak:bff:install`) creates a **configuration-only** initializer—no manual middleware wiring is required.
+
+**Middleware stack order:**
+```
+[Verikloak::BFF::HeaderGuard] → [Verikloak::Middleware] → [Your App]
+```
 
 ## Prerequisites
-- Ruby >= 3.1, Rails 6.1+ (7.x recommended)
+- Ruby >= 3.1, Rails 6.1+ (8.x supported)
 - A reverse proxy acting as BFF (e.g., Nginx auth_request or oauth2-proxy) that injects:
   - `X-Forwarded-Access-Token`
   - `X-Auth-Request-*` (email/user/groups)
@@ -19,8 +26,33 @@ gem 'verikloak-rails'
 gem 'verikloak-bff'
 ```
 
-## 2) BFF configuration
-The generator creates `config/initializers/verikloak_bff.rb`. Extend the file with configuration suitable for your proxy topology. The example below uses safe defaults for a proxy chain that appends client IP to XFF.
+## 2) Generate Configuration
+
+Run the install generator:
+
+```sh
+bin/rails g verikloak:bff:install
+```
+
+This creates `config/initializers/verikloak_bff.rb` with configuration options.
+
+### Without verikloak-rails
+
+If you prefer not to use `verikloak-rails`, you can manually insert the middleware in `config/application.rb`:
+
+```ruby
+module MyApp
+  class Application < Rails::Application
+    config.middleware.insert_before Verikloak::Middleware, Verikloak::BFF::HeaderGuard
+  end
+end
+```
+
+**Note**: Do NOT use `after_initialize` for middleware insertion in Rails 8.x+, as the middleware stack is frozen at that point.
+
+## 3) Configure BFF
+
+Edit the generated initializer to set `trusted_proxies` (required) and customize other options:
 
 ```ruby
 Verikloak::BFF.configure do |c|
