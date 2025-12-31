@@ -81,7 +81,8 @@ RSpec.describe 'Verikloak::Bff::Generators::InstallGenerator' do
 
         path = 'config/initializers/verikloak_bff.rb'
         expect(File).to exist(path)
-        expect(File.read(path)).to include('Verikloak::BFF::Rails::Middleware')
+        expect(File.read(path)).to include('Verikloak::BFF.configure')
+        expect(File.read(path)).to include('config.trusted_proxies')
       end
     end
   end

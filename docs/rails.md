@@ -2,10 +2,17 @@
 
 This guide explains how to use verikloak-bff together with Verikloak (core) and verikloak-rails in a Rails application.
 
-To avoid boot errors while the core middleware is being installed, the gem no longer inserts its header guard automatically. Instead, run `bin/rails g verikloak:bff:install` after adding the gem. The generator creates an initializer that inserts `Verikloak::BFF::HeaderGuard` immediately before the core `Verikloak::Middleware` during boot. If the core middleware has not been registered (for example because discovery settings are missing), the initializer logs a warning and skips insertion so the application can still boot. Once discovery is configured and the core middleware is enabled, restart the application to activate the BFF guard.
+## How It Works
+
+When both `verikloak-rails` and `verikloak-bff` are installed, the `verikloak-rails` railtie **automatically detects and inserts** the BFF middleware. The generator (`bin/rails g verikloak:bff:install`) creates a **configuration-only** initializer—no manual middleware wiring is required.
+
+**Middleware stack order:**
+```
+[Verikloak::BFF::HeaderGuard] → [Verikloak::Middleware] → [Your App]
+```
 
 ## Prerequisites
-- Ruby >= 3.1, Rails 6.1+ (7.x recommended)
+- Ruby >= 3.1, Rails 6.1+ (8.x supported)
 - A reverse proxy acting as BFF (e.g., Nginx auth_request or oauth2-proxy) that injects:
   - `X-Forwarded-Access-Token`
   - `X-Auth-Request-*` (email/user/groups)
@@ -19,8 +26,33 @@ gem 'verikloak-rails'
 gem 'verikloak-bff'
 ```
 
-## 2) BFF configuration
-The generator creates `config/initializers/verikloak_bff.rb`. Extend the file with configuration suitable for your proxy topology. The example below uses safe defaults for a proxy chain that appends client IP to XFF.
+## 2) Generate Configuration
+
+Run the install generator:
+
+```sh
+bin/rails g verikloak:bff:install
+```
+
+This creates `config/initializers/verikloak_bff.rb` with configuration options.
+
+### Without verikloak-rails
+
+If you prefer not to use `verikloak-rails`, you can manually insert the middleware in `config/application.rb`:
+
+```ruby
+module MyApp
+  class Application < Rails::Application
+    config.middleware.insert_before Verikloak::Middleware, Verikloak::BFF::HeaderGuard
+  end
+end
+```
+
+**Note**: Do NOT use `after_initialize` for middleware insertion in Rails 8.x+, as the middleware stack is frozen at that point.
+
+## 3) Configure BFF
+
+Edit the generated initializer to set `trusted_proxies` (required) and customize other options:
 
 ```ruby
 Verikloak::BFF.configure do |c|
@@ -61,7 +93,7 @@ end
 
 `trusted_proxies` must not be left empty; the middleware raises an error when no allowlist is provided.
 
-## 3) Reverse proxy examples
+## 4) Reverse proxy examples
 
 Nginx auth_request:
 
@@ -95,7 +127,7 @@ cookie_secure: true
 cookie_samesite: lax
 ```
 
-## 4) Consistency mapping (quick reference)
+## 5) Consistency mapping (quick reference)
 
 | Key      | Header                   | JWT claim/path       | Rule     |
 |----------|--------------------------|----------------------|----------|
@@ -111,7 +143,7 @@ enforce_claims_consistency: { email: :email, user: :sub, groups: :realm_roles }
 
 Header names can be remapped via `auth_request_headers` in the initializer. Header keys and priority lists are normalized via `Verikloak::HeaderSources`, so symbols, mixed-case, or dash-separated keys are acceptable.
 
-## 5) Validation checklist
+## 6) Validation checklist
 - XFF interpretation (leftmost/rightmost) matches your proxy’s behavior
 - `trusted_proxies` includes proxy subnets
 - `trusted_proxies` list reviewed whenever proxy topology changes
@@ -119,7 +151,7 @@ Header names can be remapped via `auth_request_headers` in the initializer. Head
 - Authorization is seeded only when empty and no chosen token exists
 - Errors are RFC6750-style; see ERRORS.md
 
-## 6) Common pitfalls
+## 7) Common pitfalls
 - Leaving the Rails-side ForwardedAccessToken middleware enabled (double promotion/conflicts)
 - Misconfigured `trusted_proxies` leading to `untrusted_proxy` (401)
 - Missing forwarded token with `require_forwarded_header: true` (401)

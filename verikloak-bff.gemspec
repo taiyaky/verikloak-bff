@@ -22,7 +22,7 @@ Gem::Specification.new do |spec|
   # Runtime dependencies
   spec.add_dependency 'jwt', '>= 2.7', '< 4.0'
   spec.add_dependency 'rack', '>= 2.2', '< 4.0'
-  spec.add_dependency 'verikloak', '>= 0.2.0', '< 1.0.0'
+  spec.add_dependency 'verikloak', '>= 0.3.0', '< 1.0.0'
 
   # Metadata for RubyGems
   spec.metadata['source_code_uri'] = spec.homepage

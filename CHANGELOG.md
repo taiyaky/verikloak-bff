@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.6] - 2025-12-31
+
+### Fixed
+- **Rails 8.x+ compatibility**: Remove `after_initialize` middleware insertion from generator template to avoid `FrozenError` when middleware stack is frozen.
+
+### Changed
+- Generator (`rails g verikloak:bff:install`) now creates a **configuration-only** initializer. Middleware insertion is handled automatically by `verikloak-rails`.
+- Generated initializer includes comprehensive configuration options with documentation comments.
+- **Breaking**: Minimum `verikloak` dependency raised from `>= 0.2.0` to `>= 0.3.0`.
+
+### Documentation
+- Add "Rails Integration" section explaining automatic middleware detection with `verikloak-rails`.
+- Add warning about Rails 8.x+ middleware stack freeze in `after_initialize`.
+- Add "oauth2-proxy Integration" section with header configuration reference and recommended settings.
+- Document manual middleware setup option for users not using `verikloak-rails`.
+- Update `docs/rails.md` with clearer setup instructions and Rails 8.x support note.
+
 ## [0.2.5] - 2025-09-28
 
 ### Changed
