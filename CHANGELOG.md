@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Generator (`rails g verikloak:bff:install`) now creates a **configuration-only** initializer. Middleware insertion is handled automatically by `verikloak-rails`.
 - Generated initializer includes comprehensive configuration options with documentation comments.
+- **Breaking**: Minimum `verikloak` dependency raised from `>= 0.2.0` to `>= 0.3.0`.
 
 ### Documentation
 - Add "Rails Integration" section explaining automatic middleware detection with `verikloak-rails`.

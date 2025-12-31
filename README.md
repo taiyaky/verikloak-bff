@@ -133,7 +133,7 @@ gem 'verikloak-bff'
 
 The middleware stack will be configured as:
 ```
-[Verikloak::Bff::HeaderGuard] → [Verikloak::Middleware] → [Your App]
+[Verikloak::BFF::HeaderGuard] → [Verikloak::Middleware] → [Your App]
 ```
 
 ### ⚠️ Rails 8.x+ Middleware Stack Freeze
@@ -157,7 +157,7 @@ end
 # ✅ This works - config/application.rb
 module MyApp
   class Application < Rails::Application
-    config.middleware.insert_before Verikloak::Middleware, Verikloak::Bff::HeaderGuard
+    config.middleware.insert_before Verikloak::Middleware, Verikloak::BFF::HeaderGuard
   end
 end
 ```
@@ -169,29 +169,31 @@ end
 | oauth2-proxy Setting | Header Sent | HeaderGuard Behavior |
 |---------------------|-------------|---------------------|
 | `--pass-access-token=true` | Cookie (`_oauth2_proxy`) | Not supported (cookie-based) |
+| `--pass-access-token=true` + nginx | `X-Forwarded-Access-Token` | Normalized to `Authorization` (default) |
 | `--set-authorization-header=true` | `Authorization: Bearer <token>` | Used directly |
-| `--set-xauthrequest=true` | `X-Auth-Request-Access-Token` | Normalized to `Authorization` |
+| `--set-xauthrequest=true` | `X-Auth-Request-Access-Token` | Requires `token_header_priority` config |
 
 ### Recommended oauth2-proxy Configuration
 
+For best compatibility, configure oauth2-proxy to emit `X-Forwarded-Access-Token` via nginx:
+
 ```bash
 oauth2-proxy \
-  --pass-access-token=false \
+  --pass-access-token=true \
   --set-authorization-header=false \
   --set-xauthrequest=true \
   --upstream=http://rails-api:3000
 ```
 
-This configuration forwards the access token via `X-Auth-Request-Access-Token`, which HeaderGuard normalizes to the `Authorization` header for downstream Verikloak middleware.
+Then configure nginx to relay the token:
 
-### Header Normalization
+```nginx
+proxy_set_header X-Forwarded-Access-Token $upstream_http_x_auth_request_access_token;
+```
 
-HeaderGuard normalizes tokens from the following headers (in priority order):
+### Using X-Auth-Request-Access-Token Directly
 
-1. `X-Forwarded-Access-Token` (default)
-2. Headers listed in `token_header_priority` configuration
-
-To customize which headers are checked:
+If you prefer to use `X-Auth-Request-Access-Token` without nginx relay, add it to `token_header_priority`:
 
 ```ruby
 use Verikloak::BFF::HeaderGuard,

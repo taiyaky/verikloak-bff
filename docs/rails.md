@@ -93,7 +93,7 @@ end
 
 `trusted_proxies` must not be left empty; the middleware raises an error when no allowlist is provided.
 
-## 3) Reverse proxy examples
+## 4) Reverse proxy examples
 
 Nginx auth_request:
 
@@ -127,7 +127,7 @@ cookie_secure: true
 cookie_samesite: lax
 ```
 
-## 4) Consistency mapping (quick reference)
+## 5) Consistency mapping (quick reference)
 
 | Key      | Header                   | JWT claim/path       | Rule     |
 |----------|--------------------------|----------------------|----------|
@@ -143,7 +143,7 @@ enforce_claims_consistency: { email: :email, user: :sub, groups: :realm_roles }
 
 Header names can be remapped via `auth_request_headers` in the initializer. Header keys and priority lists are normalized via `Verikloak::HeaderSources`, so symbols, mixed-case, or dash-separated keys are acceptable.
 
-## 5) Validation checklist
+## 6) Validation checklist
 - XFF interpretation (leftmost/rightmost) matches your proxy’s behavior
 - `trusted_proxies` includes proxy subnets
 - `trusted_proxies` list reviewed whenever proxy topology changes
@@ -151,7 +151,7 @@ Header names can be remapped via `auth_request_headers` in the initializer. Head
 - Authorization is seeded only when empty and no chosen token exists
 - Errors are RFC6750-style; see ERRORS.md
 
-## 6) Common pitfalls
+## 7) Common pitfalls
 - Leaving the Rails-side ForwardedAccessToken middleware enabled (double promotion/conflicts)
 - Misconfigured `trusted_proxies` leading to `untrusted_proxy` (401)
 - Missing forwarded token with `require_forwarded_header: true` (401)
