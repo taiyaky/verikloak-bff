@@ -193,16 +193,20 @@ proxy_set_header X-Forwarded-Access-Token $upstream_http_x_auth_request_access_t
 
 ### Using X-Auth-Request-Access-Token Directly
 
-If you prefer to use `X-Auth-Request-Access-Token` without nginx relay, add it to `token_header_priority`:
+If you prefer to use `X-Auth-Request-Access-Token` without nginx relay, configure both `forwarded_header_name` and `token_header_priority`:
 
 ```ruby
 use Verikloak::BFF::HeaderGuard,
   trusted_proxies: ['10.0.0.0/8'],
-  token_header_priority: [
-    'HTTP_X_FORWARDED_ACCESS_TOKEN',
-    'HTTP_X_AUTH_REQUEST_ACCESS_TOKEN'
-  ]
+  # Set the forwarded header to X-Auth-Request-Access-Token
+  forwarded_header_name: 'HTTP_X_AUTH_REQUEST_ACCESS_TOKEN',
+  # Also add to priority list for Authorization seeding
+  token_header_priority: ['HTTP_X_AUTH_REQUEST_ACCESS_TOKEN']
 ```
+
+> **Note**: If you only set `token_header_priority` without changing `forwarded_header_name`, 
+> `require_forwarded_header: true` will still expect `X-Forwarded-Access-Token` and return 401 
+> when it's missing.
 
 ## Development (for contributors)
 Clone and install dependencies:
