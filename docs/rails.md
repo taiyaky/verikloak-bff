@@ -52,7 +52,7 @@ end
 
 ## 3) Configure BFF
 
-Edit the generated initializer to set `trusted_proxies` (required) and customize other options:
+Edit the generated initializer to set `trusted_proxies` (required unless `disabled: true`) and customize other options:
 
 ```ruby
 Verikloak::BFF.configure do |c|
@@ -91,7 +91,7 @@ Verikloak::BFF.configure do |c|
 end
 ```
 
-`trusted_proxies` must not be left empty; the middleware raises an error when no allowlist is provided.
+`trusted_proxies` must not be left empty; the middleware raises an error when no allowlist is provided. To explicitly disable the middleware (pass-through mode), set `disabled: true`.
 
 ## 4) Reverse proxy examples
 

@@ -42,7 +42,7 @@ Run the install generator to create a configuration file:
 bin/rails g verikloak:bff:install
 ```
 
-The generator creates `config/initializers/verikloak_bff.rb` with BFF configuration options. **Edit this file to set `trusted_proxies`** (required) and customize other options as needed.
+The generator creates `config/initializers/verikloak_bff.rb` with BFF configuration options. **Edit this file to set `trusted_proxies`** (required unless `disabled: true`) and customize other options as needed.
 
 **Note**: Middleware insertion is handled automatically by `verikloak-rails`. The generated initializer only contains configuration—no manual middleware setup is required.
 
@@ -69,7 +69,8 @@ See `examples/rack.ru` for a tiny Rack app demo.
 
 | Key                          | Type                                 | Default      | Description |
 |----------------------------- |--------------------------------------|--------------|-------------|
-| `trusted_proxies`            | Array[String/Regexp/Proc]            | *(required)* | Allowlist for proxy peers (by IP/CIDR/regex/proc). |
+| `disabled`                   | Boolean                              | `false`      | Explicitly disable the middleware (pass-through mode). When `false`, `trusted_proxies` must be configured. |
+| `trusted_proxies`            | Array[String/Regexp/Proc]            | *(required)* | Allowlist for proxy peers (by IP/CIDR/regex/proc). **Required** unless `disabled: true`. |
 | `prefer_forwarded`           | Boolean                              | `true`       | Prefer `X-Forwarded-Access-Token` over `Authorization`. |
 | `require_forwarded_header`   | Boolean                              | `false`      | Reject when no `X-Forwarded-Access-Token` (blocks direct access). |
 | `enforce_header_consistency` | Boolean                              | `true`       | If both headers exist, require identical token values. |
@@ -83,6 +84,19 @@ See `examples/rack.ru` for a tiny Rack app demo.
 | `token_header_priority`      | Array[String]                        | `['HTTP_X_FORWARDED_ACCESS_TOKEN']` | When Authorization is empty and no token chosen, seed it from these env headers in order. Values are normalized via `Verikloak::HeaderSources`; `HTTP_AUTHORIZATION` is ignored as a source. |
 | `forwarded_header_name`      | String                               | `HTTP_X_FORWARDED_ACCESS_TOKEN` | Env key for forwarded access token. |
 | `auth_request_headers`       | Hash                                 | see code     | Mapping for `X-Auth-Request-*` env keys: `{ email, user, groups }`. |
+
+### Configuration Requirements
+
+When `disabled: false` (the default), you **must** configure `trusted_proxies`. If it is not set, the middleware will raise a `ConfigurationError` at startup to prevent a fail-open security vulnerability.
+
+To explicitly disable the middleware (e.g., for development or testing), set `disabled: true`:
+
+```ruby
+# Pass-through mode: no proxy trust checking
+Verikloak::BFF.configure do |config|
+  config.disabled = true
+end
+```
 
 ## Errors
 This gem returns concise, RFC 6750–style error responses with stable codes. See [ERRORS.md](ERRORS.md) for details and examples.
