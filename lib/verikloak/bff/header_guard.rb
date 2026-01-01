@@ -96,10 +96,78 @@ module Verikloak
       def sanitize_string(value)
         value.to_s.encode('UTF-8', invalid: :replace, undef: :replace, replace: '').gsub(LOG_CONTROL_CHARS, '')
       end
+
+      # Describe the source of the chosen token for logging purposes.
+      #
+      # @param prefer_forwarded [Boolean]
+      # @param auth_token [String, nil]
+      # @param fwd_token [String, nil]
+      # @return [String] "authorization" or "forwarded"
+      def token_source(prefer_forwarded, auth_token, fwd_token)
+        return 'forwarded' if prefer_forwarded && fwd_token
+
+        if auth_token && fwd_token
+          'authorization'
+        else
+          (auth_token ? 'authorization' : 'forwarded')
+        end
+      end
+
+      # Extract request id for logging from common headers.
+      #
+      # @param env [Hash]
+      # @return [String, nil]
+      def request_id(env)
+        env['HTTP_X_REQUEST_ID'] || env['action_dispatch.request_id']
+      end
+
+      # Emit a structured log line if a logger is present.
+      #
+      # @param env [Hash]
+      # @param config [Configuration]
+      # @param kind [Symbol] :ok, :mismatch, :claims_mismatch, :error
+      # @param attrs [Hash]
+      # @return [void]
+      def log_event(env, config, kind, **attrs)
+        lg = config.logger || env['rack.logger']
+        payload = { event: 'bff.header_guard', kind: kind, rid: request_id(env) }.merge(attrs).compact
+        sanitized = sanitize_payload(payload)
+        if config.log_with.respond_to?(:call)
+          begin
+            config.log_with.call(sanitized)
+          rescue StandardError
+            # ignore log hook failures
+          end
+        end
+        return unless lg
+
+        msg = sanitized.map { |k, v| v.nil? || v.to_s.empty? ? nil : "#{k}=#{v}" }.compact.join(' ')
+        level = (kind == :ok ? :info : :warn)
+        lg.public_send(level, msg)
+      rescue StandardError
+        # no-op on logging errors
+      end
+
+      # Build a minimal RFC6750-style error response.
+      #
+      # @param env [Hash]
+      # @param config [Configuration]
+      # @param error [Verikloak::BFF::Error]
+      # @return [Array(Integer, Hash, Array<String>)]
+      def respond_with_error(env, config, error)
+        log_event(env, config, :error, code: error.code)
+        body = { error: error.code, message: error.message }.to_json
+        headers = { 'Content-Type' => 'application/json',
+                    'WWW-Authenticate' => %(Bearer error="#{error.code}", error_description="#{error.message}") }
+        [error.http_status, headers, [body]]
+      end
     end
 
     # Rack middleware that enforces BFF boundary and header/claims consistency.
     class HeaderGuard
+      # Error raised when trusted_proxies is not configured and disabled is not explicitly set.
+      class ConfigurationError < StandardError; end
+
       RequestTokens = Struct.new(:auth, :forwarded, :chosen)
 
       # Accept both Rack 2 and Rack 3 builder call styles:
@@ -109,6 +177,7 @@ module Verikloak
       # @param app [#call]
       # @param opts [Hash, nil]
       # @param opts_kw [Hash]
+      # @raise [ConfigurationError] when trusted_proxies is not configured and disabled is false
       def initialize(app, opts = nil, **opts_kw)
         @app = app
         # Use a per-instance copy of global config to avoid cross-request/test side effects
@@ -118,9 +187,15 @@ module Verikloak
         combined.merge!(opts_kw) if opts_kw && !opts_kw.empty?
         apply_overrides!(combined)
 
-        return unless @config.trusted_proxies.nil? || @config.trusted_proxies.empty?
+        # Check configuration validity
+        validate_configuration!
+      end
 
-        raise ArgumentError, 'trusted_proxies must be configured'
+      # Check if the middleware is explicitly disabled.
+      #
+      # @return [Boolean]
+      def disabled?
+        @config.disabled
       end
 
       # Process a Rack request through the BFF header guard pipeline.
@@ -131,9 +206,14 @@ module Verikloak
       # 3. Policy enforcement (forwarded token requirements, consistency checks)
       # 4. Request finalization (Authorization header normalization)
       #
+      # When `disabled: true` is set, the middleware passes through without any processing.
+      #
       # @param env [Hash]
       # @return [Array(Integer, Hash, Array<#to_s>)] Rack response triple
       def call(env)
+        # Pass through if middleware is explicitly disabled
+        return @app.call(env) if disabled?
+
         # Stage 1: Validate request comes from trusted proxy
         ensure_trusted_proxy!(env)
 
@@ -148,10 +228,27 @@ module Verikloak
 
         @app.call(env)
       rescue Verikloak::BFF::Error => e
-        respond_with_error(env, e)
+        HeaderGuardSanitizer.respond_with_error(env, @config, e)
       end
 
       private
+
+      # Validate that required configuration is present.
+      # Raises ConfigurationError if trusted_proxies is not configured and disabled is false.
+      #
+      # @raise [ConfigurationError]
+      # @return [void]
+      def validate_configuration!
+        return if @config.disabled
+
+        proxies = @config.trusted_proxies
+        return unless proxies.nil? || proxies.empty?
+
+        raise ConfigurationError,
+              'trusted_proxies must be configured for Verikloak::BFF::HeaderGuard. ' \
+              'Set trusted_proxies to an array of allowed proxy addresses/CIDRs, ' \
+              'or set disabled: true to explicitly skip BFF protection.'
+      end
 
       # Build token state by extracting, validating, and selecting the active token.
       #
@@ -210,63 +307,6 @@ module Verikloak
         auth_token || fwd_token
       end
 
-      # Describe the source of the chosen token for logging purposes.
-      #
-      # @param auth_token [String, nil]
-      # @param fwd_token [String, nil]
-      # @return [String] "authorization" or "forwarded"
-      def token_source(auth_token, fwd_token)
-        return 'forwarded' if @config.prefer_forwarded && fwd_token
-
-        if auth_token && fwd_token
-          'authorization'
-        else
-          (auth_token ? 'authorization' : 'forwarded')
-        end
-      end
-
-      # Extract request id for logging from common headers.
-      #
-      # @param env [Hash]
-      # @return [String, nil]
-      def request_id(env)
-        env['HTTP_X_REQUEST_ID'] || env['action_dispatch.request_id']
-      end
-
-      # Resolve logger to use (config-provided or rack.logger).
-      #
-      # @param env [Hash]
-      # @return [Logger, nil]
-      def logger(env)
-        @config.logger || env['rack.logger']
-      end
-
-      # Emit a structured log line if a logger is present.
-      #
-      # @param env [Hash]
-      # @param kind [Symbol] :ok, :mismatch, :claims_mismatch, :error
-      # @param attrs [Hash]
-      # @return [void]
-      def log_event(env, kind, **attrs)
-        lg = logger(env)
-        payload = { event: 'bff.header_guard', kind: kind, rid: request_id(env) }.merge(attrs).compact
-        sanitized = HeaderGuardSanitizer.sanitize_payload(payload)
-        if @config.log_with.respond_to?(:call)
-          begin
-            @config.log_with.call(sanitized)
-          rescue StandardError
-            # ignore log hook failures
-          end
-        end
-        return unless lg
-
-        msg = sanitized.map { |k, v| v.nil? || v.to_s.empty? ? nil : "#{k}=#{v}" }.compact.join(' ')
-        level = (kind == :ok ? :info : :warn)
-        lg.public_send(level, msg)
-      rescue StandardError
-        # no-op on logging errors
-      end
-
       # Raise when the request did not come through a trusted proxy.
       #
       # @param env [Hash]
@@ -300,7 +340,7 @@ module Verikloak
         digest_b = ::Digest::SHA256.hexdigest(fwd_token)
         return if Rack::Utils.secure_compare(digest_a, digest_b)
 
-        log_event(env, :mismatch, reason: 'authorization_vs_forwarded')
+        HeaderGuardSanitizer.log_event(env, @config, :mismatch, reason: 'authorization_vs_forwarded')
         raise HeaderMismatchError
       end
 
@@ -315,7 +355,7 @@ module Verikloak
         return unless res.is_a?(Array) && res.first == :error
 
         field = res.last
-        log_event(env, :claims_mismatch, field: field.to_s)
+        HeaderGuardSanitizer.log_event(env, @config, :claims_mismatch, field: field.to_s)
         return if claims_consistency_log_only?
 
         raise ClaimsMismatchError, field
@@ -342,20 +382,8 @@ module Verikloak
         return unless chosen
 
         ForwardedToken.set_authorization!(env, chosen)
-        log_event(env, :ok, source: token_source(auth_token, fwd_token), **HeaderGuardSanitizer.token_tags(chosen))
-      end
-
-      # Build a minimal RFC6750-style error response.
-      #
-      # @param env [Hash]
-      # @param error [Verikloak::BFF::Error]
-      # @return [Array(Integer, Hash, Array<String>)]
-      def respond_with_error(env, error)
-        log_event(env, :error, code: error.code)
-        body = { error: error.code, message: error.message }.to_json
-        headers = { 'Content-Type' => 'application/json',
-                    'WWW-Authenticate' => %(Bearer error="#{error.code}", error_description="#{error.message}") }
-        [error.http_status, headers, [body]]
+        source = HeaderGuardSanitizer.token_source(@config.prefer_forwarded, auth_token, fwd_token)
+        HeaderGuardSanitizer.log_event(env, @config, :ok, source: source, **HeaderGuardSanitizer.token_tags(chosen))
       end
 
       # Resolve the first env header from which to source a bearer token.

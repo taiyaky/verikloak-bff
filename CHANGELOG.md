@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0] - 2025-01-01
+
+### Added
+- **`disabled` configuration option**: Explicitly disable the middleware in pass-through mode. When `disabled: false` (default) and `trusted_proxies` is not configured, a `ConfigurationError` is raised at startup.
+
+### Changed
+- **BREAKING**: `trusted_proxies` is now **required** when `disabled: false`. Previously, an empty `trusted_proxies` would silently disable the middleware (fail-open). Now it raises `Verikloak::BFF::HeaderGuard::ConfigurationError` to prevent unintended security gaps.
+
+### Fixed
+- **Security**: Prevent fail-open vulnerability where unset `trusted_proxies` could silently bypass proxy trust validation.
+
+---
+
 ## [0.2.6] - 2025-12-31
 
 ### Fixed

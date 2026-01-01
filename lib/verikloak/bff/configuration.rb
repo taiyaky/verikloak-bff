@@ -3,6 +3,8 @@
 # Configuration object for verikloak-bff. Holds middleware settings such as
 # proxy trust rules, header consistency policies, and logging options.
 #
+# @!attribute [rw] disabled
+#   @return [Boolean] explicitly disable the middleware (pass-through mode)
 # @!attribute [rw] trusted_proxies
 #   @return [Array<String, Regexp, Proc>] allowlist of trusted proxy peers
 # @!attribute [rw] prefer_forwarded
@@ -28,7 +30,7 @@ module Verikloak
   module BFF
     # Configuration for Verikloak::BFF middleware (trusted proxies, header policies, logging, etc.).
     class Configuration
-      attr_accessor :trusted_proxies, :prefer_forwarded, :require_forwarded_header,
+      attr_accessor :disabled, :trusted_proxies, :prefer_forwarded, :require_forwarded_header,
                     :enforce_header_consistency, :enforce_claims_consistency,
                     :strip_suspicious_headers, :xff_strategy, :clock_skew_leeway,
                     :logger, :peer_preference, :auth_request_headers, :log_with,
@@ -43,6 +45,7 @@ module Verikloak
       #
       # @return [void]
       def initialize
+        @disabled = false
         @trusted_proxies = []
         @prefer_forwarded = true
         @require_forwarded_header = false

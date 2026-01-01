@@ -20,13 +20,27 @@
 #
 Verikloak::BFF.configure do |config|
   # ==========================================================================
-  # Trust Boundary (REQUIRED)
+  # Disable Middleware (Development/Testing Only)
+  # ==========================================================================
+  # Explicitly disable the middleware (pass-through mode).
+  # When disabled: false (default), trusted_proxies MUST be configured.
+  #
+  # SECURITY WARNING: Only set to true in development/test environments.
+  # Production deployments should ALWAYS configure trusted_proxies.
+  #
+  # config.disabled = ENV.fetch('VERIKLOAK_BFF_DISABLED', 'false') == 'true'
+
+  # ==========================================================================
+  # Trust Boundary (REQUIRED when disabled: false)
   # ==========================================================================
   # Allowlist for trusted proxy peers. Requests from untrusted peers are rejected.
   # Supports IP addresses, CIDR ranges, Regexp, or Proc.
   #
   # SECURITY: Keep this list as specific as possible. Review whenever proxy
   # topology changes to avoid unintentionally widening the trust boundary.
+  #
+  # NOTE: This setting is REQUIRED. If not configured and disabled is false,
+  # a ConfigurationError will be raised at startup to prevent fail-open vulnerabilities.
   #
   config.trusted_proxies = ENV.fetch('TRUSTED_PROXIES', '127.0.0.1').split(',').map(&:strip)
 

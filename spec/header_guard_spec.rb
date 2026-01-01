@@ -106,9 +106,28 @@ RSpec.describe Verikloak::BFF::HeaderGuard do
   end
 
   context "trust boundary" do
-    it "requires trusted_proxies configuration" do
-      # Ensure the middleware is instantiated (Rack::Builder lazily builds on first call)
-      expect { build_app.to_app }.to raise_error(ArgumentError)
+    it "raises ConfigurationError when trusted_proxies is not configured and disabled is false" do
+      expect {
+        build_app({}).to_app # .to_app triggers middleware initialization
+      }.to raise_error(Verikloak::BFF::HeaderGuard::ConfigurationError, /trusted_proxies must be configured/)
+    end
+
+    it "passes through when disabled: true is set explicitly" do
+      @app = build_app(disabled: true)
+      get "/"
+      expect(last_response.status).to eq 200
+    end
+
+    it "passes through when disabled: true even without trusted_proxies" do
+      @app = build_app(disabled: true, trusted_proxies: nil)
+      header "X-Forwarded-For", "1.2.3.4"
+      header "Authorization", "Bearer test"
+      header "X-Auth-Request-Email", "user@example.com"
+      get "/"
+      expect(last_response.status).to eq 200
+      # Verify headers pass through unchanged in disabled mode
+      expect(last_request.env["HTTP_AUTHORIZATION"]).to eq "Bearer test"
+      expect(last_request.env["HTTP_X_AUTH_REQUEST_EMAIL"]).to eq "user@example.com"
     end
 
     it "rejects requests from untrusted proxy" do
