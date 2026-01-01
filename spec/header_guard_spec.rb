@@ -122,8 +122,12 @@ RSpec.describe Verikloak::BFF::HeaderGuard do
       @app = build_app(disabled: true, trusted_proxies: nil)
       header "X-Forwarded-For", "1.2.3.4"
       header "Authorization", "Bearer test"
+      header "X-Auth-Request-Email", "user@example.com"
       get "/"
       expect(last_response.status).to eq 200
+      # Verify headers pass through unchanged in disabled mode
+      expect(last_request.env["HTTP_AUTHORIZATION"]).to eq "Bearer test"
+      expect(last_request.env["HTTP_X_AUTH_REQUEST_EMAIL"]).to eq "user@example.com"
     end
 
     it "rejects requests from untrusted proxy" do
