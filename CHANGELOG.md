@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.0] - 2026-02-15
+
+### Fixed
+- **Token divergence**: `ForwardedToken.set_authorization!` now always overwrites `HTTP_AUTHORIZATION` with the chosen token. Previously, an existing Bearer header would prevent the overwrite, causing the downstream Verikloak middleware to verify a different token than the one selected by the BFF guard
+- **BREAKING**: Minimum `verikloak` dependency raised to `~> 1.0`
+
+### Added
+- **Unit tests**: Added direct unit tests for `ForwardedToken`, `JwtUtils`, and `HeaderSources` modules
+
+### Changed
+- **v1.0.0 stable release**: Public API is now considered stable under Semantic Versioning
+
+---
+
 ## [0.4.0] - 2026-02-15
 
 ### Security

@@ -79,16 +79,14 @@ module Verikloak
         "Bearer #{s}"
       end
 
-      # Set Authorization header to a normalized Bearer value (no overwrite when present).
+      # Set Authorization header to a normalized Bearer value.
+      # Always overwrites the existing Authorization header to ensure
+      # the chosen token and Authorization are synchronized.
       #
       # @param env [Hash]
       # @param token [String]
       # @return [void]
       def set_authorization!(env, token)
-        existing = env[AUTH_HEADER].to_s
-        # Overwrite only if Authorization is empty or not a valid Bearer value
-        return unless existing.empty? || normalize_auth(existing).nil?
-
         env[AUTH_HEADER] = ensure_bearer(token)
       end
 
