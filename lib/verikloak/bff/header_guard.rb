@@ -27,7 +27,8 @@ module Verikloak
   module BFF
     # Internal helpers that sanitize tokens and log payloads for HeaderGuard.
     module HeaderGuardSanitizer
-      LOG_CONTROL_CHARS = /[[:cntrl:]]/
+      LOG_CONTROL_CHARS    = Constants::LOG_CONTROL_CHARS
+      MAX_LOG_FIELD_LENGTH = Constants::MAX_LOG_FIELD_LENGTH
 
       module_function
 
@@ -40,15 +41,31 @@ module Verikloak
         return {} unless token
 
         payload, header = decode_unverified(token)
+        token_tags_from_decoded(payload, header)
+      rescue StandardError => e
+        warn("[verikloak-bff] token_tags failed: #{e.class}: #{e.message}") if $DEBUG
+        {}
+      end
+
+      # Build sanitized log tags from pre-decoded JWT payload and header.
+      # Avoids redundant decoding when the caller already has decoded data.
+      #
+      # @param payload [Hash]
+      # @param header [Hash]
+      # @return [Hash{Symbol=>Object}]
+      def token_tags_from_decoded(payload, header)
+        return {} unless payload.is_a?(Hash)
+
         aud = payload['aud']
         aud = aud.join(' ') if aud.is_a?(Array)
         {
           sub: sanitize_log_field(payload['sub']&.to_s),
           iss: sanitize_log_field(payload['iss']&.to_s),
           aud: sanitize_log_field(aud&.to_s),
-          kid: sanitize_log_field(header['kid']&.to_s)
+          kid: sanitize_log_field(header&.dig('kid')&.to_s)
         }.compact
-      rescue StandardError
+      rescue StandardError => e
+        warn("[verikloak-bff] token_tags_from_decoded failed: #{e.class}: #{e.message}") if $DEBUG
         {}
       end
 
@@ -89,12 +106,14 @@ module Verikloak
         end
       end
 
-      # Remove control characters and invalid UTF-8 from a string.
+      # Remove control characters, invalid UTF-8, and truncate to {MAX_LOG_FIELD_LENGTH}.
       #
       # @param value [#to_s]
       # @return [String]
       def sanitize_string(value)
-        value.to_s.encode('UTF-8', invalid: :replace, undef: :replace, replace: '').gsub(LOG_CONTROL_CHARS, '')
+        sanitized = value.to_s.encode('UTF-8', invalid: :replace, undef: :replace, replace: '').gsub(LOG_CONTROL_CHARS,
+                                                                                                     '')
+        sanitized.length > MAX_LOG_FIELD_LENGTH ? "#{sanitized[0, MAX_LOG_FIELD_LENGTH]}..." : sanitized
       end
 
       # Describe the source of the chosen token for logging purposes.
@@ -129,26 +148,38 @@ module Verikloak
       # @param attrs [Hash]
       # @return [void]
       def log_event(env, config, kind, **attrs)
-        lg = config.logger || env['rack.logger']
         payload = { event: 'bff.header_guard', kind: kind, rid: request_id(env) }.merge(attrs).compact
         sanitized = sanitize_payload(payload)
-        if config.log_with.respond_to?(:call)
-          begin
-            config.log_with.call(sanitized)
-          rescue StandardError
-            # ignore log hook failures
-          end
-        end
-        return unless lg
+        invoke_log_hook(config, sanitized)
+        emit_to_logger(config.logger || env['rack.logger'], sanitized, kind)
+      rescue StandardError => e
+        warn("[verikloak-bff] log_event failed: #{e.class}: #{e.message}") if $DEBUG
+      end
+
+      # @param config [Configuration]
+      # @param sanitized [Hash]
+      # @return [void]
+      def invoke_log_hook(config, sanitized)
+        return unless config.log_with.respond_to?(:call)
+
+        config.log_with.call(sanitized)
+      rescue StandardError => e
+        warn("[verikloak-bff] log_with hook failed: #{e.class}: #{e.message}") if $DEBUG
+      end
+
+      # @param logger [Logger, nil]
+      # @param sanitized [Hash]
+      # @param kind [Symbol]
+      # @return [void]
+      def emit_to_logger(logger, sanitized, kind)
+        return unless logger
 
         msg = sanitized.map { |k, v| v.nil? || v.to_s.empty? ? nil : "#{k}=#{v}" }.compact.join(' ')
-        level = (kind == :ok ? :info : :warn)
-        lg.public_send(level, msg)
-      rescue StandardError
-        # no-op on logging errors
+        logger.public_send(kind == :ok ? :info : :warn, msg)
       end
 
       # Build a minimal RFC6750-style error response.
+      # Delegates to {Verikloak::ErrorResponse} for consistent formatting across gems.
       #
       # @param env [Hash]
       # @param config [Configuration]
@@ -156,10 +187,23 @@ module Verikloak
       # @return [Array(Integer, Hash, Array<String>)]
       def respond_with_error(env, config, error)
         log_event(env, config, :error, code: error.code)
-        body = { error: error.code, message: error.message }.to_json
-        headers = { 'Content-Type' => 'application/json',
-                    'WWW-Authenticate' => %(Bearer error="#{error.code}", error_description="#{error.message}") }
-        [error.http_status, headers, [body]]
+        require 'verikloak/error_response'
+        status, headers, body = Verikloak::ErrorResponse.build(
+          code: error.code, message: error.message, status: error.http_status
+        )
+
+        # RFC 6750 §3.1: include WWW-Authenticate on 403 for client diagnostics
+        if status == 403 && !headers.key?('WWW-Authenticate')
+          sanitize = Verikloak::ErrorResponse.method(:sanitize_header_value)
+          headers['WWW-Authenticate'] = format(
+            'Bearer realm="%<realm>s", error="%<code>s", error_description="%<msg>s"',
+            realm: sanitize.call('verikloak-bff'),
+            code: sanitize.call(error.code),
+            msg: sanitize.call(error.message)
+          )
+        end
+
+        [status, headers, body]
       end
     end
 
@@ -168,7 +212,7 @@ module Verikloak
       # Error raised when trusted_proxies is not configured and disabled is not explicitly set.
       class ConfigurationError < StandardError; end
 
-      RequestTokens = Struct.new(:auth, :forwarded, :chosen)
+      RequestTokens = Struct.new(:auth, :forwarded, :chosen, :decoded_payload, :decoded_header)
 
       # Accept both Rack 2 and Rack 3 builder call styles:
       # - new(app, key: val)
@@ -251,6 +295,8 @@ module Verikloak
       end
 
       # Build token state by extracting, validating, and selecting the active token.
+      # Decodes the chosen token once (unverified) so that downstream stages
+      # (claims consistency, logging) can reuse the result without re-parsing.
       #
       # @param env [Hash]
       # @return [RequestTokens]
@@ -261,7 +307,8 @@ module Verikloak
         chosen = choose_token(auth_token, fwd_token)
         chosen = seed_authorization_if_needed(env, chosen)
 
-        RequestTokens.new(auth_token, fwd_token, chosen)
+        payload, header = JwtUtils.decode_unverified(chosen)
+        RequestTokens.new(auth_token, fwd_token, chosen, payload, header)
       end
 
       # Apply header and claim consistency policies for the current request.
@@ -271,7 +318,7 @@ module Verikloak
       # @return [void]
       def enforce_token_policies!(env, tokens)
         enforce_header_consistency!(env, tokens.auth, tokens.forwarded)
-        enforce_claims_consistency!(env, tokens.chosen)
+        enforce_claims_consistency!(env, tokens)
       end
 
       # Mutate the Rack env with normalized headers and logging hints.
@@ -281,18 +328,24 @@ module Verikloak
       # @return [void]
       def finalize_request!(env, tokens)
         ForwardedToken.strip_suspicious!(env, @config.auth_request_headers) if @config.strip_suspicious_headers
-        normalize_authorization!(env, tokens.chosen, tokens.auth, tokens.forwarded)
+        normalize_authorization!(env, tokens)
         expose_env_hints(env, tokens.chosen)
       end
 
       # Apply per-instance configuration overrides.
+      # Keys starting with '_' or containing '!' are rejected to prevent
+      # accidental invocation of non-accessor methods.
       #
       # @param opts [Hash]
       # @return [void]
       def apply_overrides!(opts)
         cfg = @config
         opts.each do |k, v|
-          cfg.public_send("#{k}=", v) if cfg.respond_to?("#{k}=")
+          key_s = k.to_s
+          next if key_s.start_with?('_') || key_s.include?('!')
+
+          writer = "#{key_s}="
+          cfg.public_send(writer, v) if cfg.respond_to?(writer)
         end
       end
 
@@ -347,11 +400,14 @@ module Verikloak
       # Enforce X-Auth-Request-* ↔ JWT claims mapping when configured.
       #
       # @param env [Hash]
-      # @param chosen [String, nil]
+      # @param tokens [RequestTokens]
       # @return [void]
       # @raise [ClaimsMismatchError]
-      def enforce_claims_consistency!(env, chosen)
-        res = ConsistencyChecks.enforce!(env, chosen, @config.enforce_claims_consistency, @config.auth_request_headers)
+      def enforce_claims_consistency!(env, tokens)
+        res = ConsistencyChecks.enforce_with_claims(
+          env, tokens.decoded_payload,
+          @config.enforce_claims_consistency, @config.auth_request_headers
+        )
         return unless res.is_a?(Array) && res.first == :error
 
         field = res.last
@@ -372,18 +428,19 @@ module Verikloak
       end
 
       # Set normalized Authorization header and emit success log.
+      # Reuses pre-decoded token payload/header from {RequestTokens} to avoid
+      # redundant JWT parsing.
       #
       # @param env [Hash]
-      # @param chosen [String, nil]
-      # @param auth_token [String, nil]
-      # @param fwd_token [String, nil]
+      # @param tokens [RequestTokens]
       # @return [void]
-      def normalize_authorization!(env, chosen, auth_token, fwd_token)
-        return unless chosen
+      def normalize_authorization!(env, tokens)
+        return unless tokens.chosen
 
-        ForwardedToken.set_authorization!(env, chosen)
-        source = HeaderGuardSanitizer.token_source(@config.prefer_forwarded, auth_token, fwd_token)
-        HeaderGuardSanitizer.log_event(env, @config, :ok, source: source, **HeaderGuardSanitizer.token_tags(chosen))
+        ForwardedToken.set_authorization!(env, tokens.chosen)
+        source = HeaderGuardSanitizer.token_source(@config.prefer_forwarded, tokens.auth, tokens.forwarded)
+        tags = HeaderGuardSanitizer.token_tags_from_decoded(tokens.decoded_payload, tokens.decoded_header)
+        HeaderGuardSanitizer.log_event(env, @config, :ok, source: source, **tags)
       end
 
       # Resolve the first env header from which to source a bearer token.

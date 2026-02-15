@@ -113,6 +113,7 @@ For full reverse proxy examples (Nginx auth_request / oauth2-proxy), see [docs/r
 
 - Trusted proxy hygiene
   - Keep `trusted_proxies` as specific as possible (individual IPs, tight CIDR ranges, or regexes). Review the list whenever proxy topology changes to avoid unintentionally widening the trust boundary.
+  - IPv4-mapped IPv6 addresses (`::ffff:172.17.0.1`) are automatically normalised to native IPv4 so that plain IPv4 CIDR ranges (e.g. `172.17.0.0/16`) match correctly in Docker / Kubernetes environments.
 
 - Header name customization
   - Forwarded-access-token header can be changed via:

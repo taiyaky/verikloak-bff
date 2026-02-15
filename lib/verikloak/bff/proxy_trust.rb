@@ -54,11 +54,15 @@ module Verikloak
       end
 
       # Parse string to IPAddr or nil on failure.
+      # IPv4-mapped IPv6 addresses (e.g. ::ffff:127.0.0.1) are normalised to
+      # native IPv4 so that CIDR checks against plain IPv4 ranges succeed.
       #
       # @param str [String]
       # @return [IPAddr, nil]
       def ip_or_nil(str)
-        IPAddr.new(str)
+        addr = IPAddr.new(str)
+        addr = addr.native if addr.respond_to?(:native)
+        addr
       rescue StandardError
         nil
       end

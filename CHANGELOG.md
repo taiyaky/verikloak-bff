@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.0] - 2026-02-15
+
+### Security
+- **Log value truncation**: `sanitize_string` now truncates values exceeding 256 characters (`MAX_LOG_FIELD_LENGTH`) to prevent log injection / memory abuse
+
+### Fixed
+- **`MAX_TOKEN_BYTES`**: Raised from 4096 to 8192 to match core gem — prevents behavioural inconsistency (false rejection / inspection bypass) for tokens between 4 KB and 8 KB
+- **IPv4-mapped IPv6 normalisation**: `ProxyTrust.ip_or_nil` now calls `IPAddr#native` so that `::ffff:172.17.0.1` correctly matches `172.17.0.0/16` in Docker/Kubernetes environments
+- **`apply_overrides!` hardening**: Rejects keys starting with `_` or containing `!` to prevent accidental invocation of non-accessor methods (consistent with verikloak-rails `BffConfigurator`)
+- **`ForwardedToken::FORWARDED_HEADER`**: Now references `Verikloak::HeaderSources::DEFAULT_FORWARDED_HEADER` instead of duplicating the string, eliminating maintenance drift risk
+
+### Changed
+- Error responses now delegate to `Verikloak::ErrorResponse.build` for RFC 6750-compliant JSON output
+- Error class hierarchy unified: `Verikloak::BFF::Error` now inherits from `Verikloak::Error`
+- **BREAKING**: Minimum `verikloak` dependency raised to `>= 0.4.0`
+- Dev dependency `rspec` pinned to `~> 3.13`, `rubocop-rspec` pinned to `~> 3.9`
+
+### Inherited from verikloak 0.4.0
+The following security improvements are provided by the core `verikloak` gem and become available through the dependency bump. They are **not implemented in verikloak-bff** itself:
+- Faraday 2.14.1 security update (CVE-2026-25765)
+- Header injection protection via `Verikloak::ErrorResponse.sanitize_header_value`
+- JWT token size limit (`MAX_TOKEN_BYTES = 8192`)
+- HTTPS enforcement and SSRF protection in OIDC discovery
+- URL path-traversal normalisation
+
+---
+
 ## [0.3.0] - 2025-01-01
 
 ### Added
