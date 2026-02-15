@@ -36,7 +36,31 @@ module Verikloak
         return true if mapping.nil? || mapping.empty?
 
         claims = decode_claims(token)
+        enforce_claims(env, claims, mapping, headers_map)
+      end
 
+      # Enforce consistency using pre-decoded claims (avoids redundant JWT parsing).
+      #
+      # @param env [Hash]
+      # @param claims [Hash] pre-decoded JWT claims
+      # @param mapping [Hash]
+      # @param headers_map [Hash{Symbol=>String}, nil]
+      # @return [true, Array(:error, Symbol)]
+      def enforce_with_claims(env, claims, mapping, headers_map = nil)
+        return true if mapping.nil? || mapping.empty?
+
+        claims = {} unless claims.is_a?(Hash)
+        enforce_claims(env, claims, mapping, headers_map)
+      end
+
+      # Shared implementation for enforce! and enforce_with_claims.
+      #
+      # @param env [Hash]
+      # @param claims [Hash]
+      # @param mapping [Hash]
+      # @param headers_map [Hash{Symbol=>String}, nil]
+      # @return [true, Array(:error, Symbol)]
+      def enforce_claims(env, claims, mapping, headers_map)
         mapping.each do |header_key, claim_key|
           hdr_val = extract_header_value(env, header_key, headers_map)
           next if hdr_val.nil? # no header → skip comparison

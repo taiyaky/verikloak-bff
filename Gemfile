@@ -7,10 +7,10 @@ gemspec
 group :development, :test do
   gem 'rack-test'
   gem 'rake'
-  gem 'rspec'
+  gem 'rspec', '~> 3.13'
   gem 'rubocop', require: false
   gem 'rubocop-rake', require: false
-  gem 'rubocop-rspec', require: false
+  gem 'rubocop-rspec', '~> 3.9', require: false
 end
 
 # Security auditing for dependencies in development/CI

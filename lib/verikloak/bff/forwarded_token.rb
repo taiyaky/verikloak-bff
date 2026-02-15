@@ -4,14 +4,16 @@
 #
 # @see .extract
 
+require 'verikloak/header_sources'
+
 module Verikloak
   module BFF
     # Helpers to extract and normalize forwarded/access token headers.
     module ForwardedToken
       module_function
 
-      FORWARDED_HEADER = 'HTTP_X_FORWARDED_ACCESS_TOKEN'
-      AUTH_HEADER      = 'HTTP_AUTHORIZATION'
+      FORWARDED_HEADER = Verikloak::HeaderSources::DEFAULT_FORWARDED_HEADER
+      AUTH_HEADER      = Verikloak::HeaderSources::AUTHORIZATION_HEADER
 
       # Extract normalized tokens from the Rack env.
       #

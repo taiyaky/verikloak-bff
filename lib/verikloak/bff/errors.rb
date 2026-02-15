@@ -3,15 +3,17 @@
 # Error types emitted by verikloak-bff. These map to RFC6750-style responses
 # with stable error codes for easy handling at clients and logs.
 
+require 'verikloak/errors'
+
 module Verikloak
   module BFF
     # Base error class with HTTP status and short code.
+    # Inherits from {Verikloak::Error} so that `rescue Verikloak::Error` catches all
+    # Verikloak gem errors uniformly.
     #
     # @attr_reader [String] code
     # @attr_reader [Integer] http_status
-    class Error < StandardError
-      attr_reader :code, :http_status
-
+    class Error < Verikloak::Error
       # Build a BFF error with a stable code and HTTP status.
       #
       # @param message [String, nil]
@@ -19,9 +21,7 @@ module Verikloak
       # @param http_status [Integer]
       # @return [void]
       def initialize(message = nil, code: 'bff_error', http_status: 401)
-        super(message || code)
-        @code = code
-        @http_status = http_status
+        super(message || code, code: code, http_status: http_status)
       end
     end
 
