@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**: Minimum `verikloak` dependency raised to `>= 0.4.0`
 - Dev dependency `rspec` pinned to `~> 3.13`, `rubocop-rspec` pinned to `~> 3.9`
 
+### Inherited from verikloak 0.4.0
+The following security improvements are provided by the core `verikloak` gem and become available through the dependency bump. They are **not implemented in verikloak-bff** itself:
+- Faraday 2.14.1 security update (CVE-2026-25765)
+- Header injection protection via `Verikloak::ErrorResponse.sanitize_header_value`
+- JWT token size limit (`MAX_TOKEN_BYTES = 8192`)
+- HTTPS enforcement and SSRF protection in OIDC discovery
+- URL path-traversal normalisation
+
 ---
 
 ## [0.3.0] - 2025-01-01
