@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [1.1.0] - 2026-07-03
+
+Verified against verikloak 1.1.0 (core) and verikloak-rails 1.2.0.
 
 ### Fixed
 - **Empty Bearer Authorization**: `ForwardedToken.normalize_auth` now returns `nil` for a Bearer scheme without a token (e.g. `Authorization: Bearer`). Previously it returned an empty string, which caused a spurious `401 header_mismatch` when a valid forwarded token was present. `seed_authorization_if_needed` no longer re-inspects the raw `HTTP_AUTHORIZATION` value either, so a bare `Authorization: Bearer` no longer blocks seeding a valid token from `token_header_priority` headers
