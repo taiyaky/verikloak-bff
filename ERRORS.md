@@ -57,7 +57,7 @@ WWW-Authenticate: Bearer error="header_mismatch", error_description="authorizati
 - PII: The middleware avoids logging PII (e.g., emails). On `claims_mismatch`, it logs only which field disagreed.
 - Logger: Uses `config.logger` when set, otherwise `env['rack.logger']`. If neither is present, logging is skipped.
 - Tips:
-  - `from_trusted_proxy?`: Forwarded headers are considered as token sources only when the request originates from a trusted peer. Detection prefers `REMOTE_ADDR`, then falls back to the nearest (`X-Forwarded-For` rightmost) when unavailable.
+  - Proxy trust (`ProxyTrust.trusted?`): Forwarded headers are considered as token sources only when the request originates from a trusted peer. Detection prefers `REMOTE_ADDR`, then falls back to the nearest (`X-Forwarded-For` rightmost) when unavailable, unless `peer_preference: :xff_only` is set.
   - `selected_peer`: The peer IP used for trust decisions is exposed as `env['verikloak.bff.selected_peer']` to aid debugging.
 
 ## Debugging Checklist

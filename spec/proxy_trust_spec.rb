@@ -21,6 +21,53 @@ RSpec.describe Verikloak::BFF::ProxyTrust do
     expect(Verikloak::BFF::ProxyTrust.trusted?(env, ['10.0.0.0/8'], :rightmost)).to be false
   end
 
+  context 'peer_preference' do
+    let(:env) do
+      { 'REMOTE_ADDR' => '203.0.113.9', 'HTTP_X_FORWARDED_FOR' => '198.51.100.10, 10.0.0.7' }
+    end
+
+    it 'uses REMOTE_ADDR for trust decision with :remote_then_xff (default)' do
+      expect(Verikloak::BFF::ProxyTrust.trusted?(env, ['10.0.0.0/8'], :rightmost)).to be false
+    end
+
+    it 'uses XFF for trust decision with :xff_only' do
+      expect(
+        Verikloak::BFF::ProxyTrust.trusted?(env, ['10.0.0.0/8'], :rightmost, preference: :xff_only)
+      ).to be true
+    end
+
+    it 'respects xff_strategy under :xff_only' do
+      expect(
+        Verikloak::BFF::ProxyTrust.trusted?(env, ['10.0.0.0/8'], :leftmost, preference: :xff_only)
+      ).to be false
+    end
+
+    it 'falls back to the safe REMOTE_ADDR-first path for an unrecognized preference' do
+      expect(
+        Verikloak::BFF::ProxyTrust.trusted?(env, ['10.0.0.0/8'], :rightmost, preference: :remote_first)
+      ).to be false
+    end
+
+    it 'treats a nil preference as REMOTE_ADDR-first (never XFF-first)' do
+      expect(
+        Verikloak::BFF::ProxyTrust.trusted?(env, ['10.0.0.0/8'], :rightmost, preference: nil)
+      ).to be false
+    end
+  end
+
+  context 'rule isolation' do
+    it 'does not let an invalid CIDR rule disable subsequent rules' do
+      env = { 'REMOTE_ADDR' => '10.0.0.5' }
+      expect(Verikloak::BFF::ProxyTrust.trusted?(env, ['10.0.0/8', '10.0.0.0/8'], :rightmost)).to be true
+    end
+
+    it 'does not let a raising Proc rule disable subsequent rules' do
+      env = { 'REMOTE_ADDR' => '10.0.0.5' }
+      raising = ->(_ip, _env) { raise 'boom' }
+      expect(Verikloak::BFF::ProxyTrust.trusted?(env, [raising, '10.0.0.0/8'], :rightmost)).to be true
+    end
+  end
+
   context 'IPv4-mapped IPv6 normalisation' do
     it 'matches ::ffff:127.0.0.1 against 127.0.0.0/8' do
       env = { 'REMOTE_ADDR' => '::ffff:127.0.0.1' }

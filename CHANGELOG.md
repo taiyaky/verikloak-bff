@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] - 2026-07-03
+
+Verified against verikloak 1.1.0 (core) and verikloak-rails 1.2.0.
+
+### Fixed
+- **Empty Bearer Authorization**: `ForwardedToken.normalize_auth` now returns `nil` for a Bearer scheme without a token (e.g. `Authorization: Bearer`). Previously it returned an empty string, which caused a spurious `401 header_mismatch` when a valid forwarded token was present. `seed_authorization_if_needed` no longer re-inspects the raw `HTTP_AUTHORIZATION` value either, so a bare `Authorization: Bearer` no longer blocks seeding a valid token from `token_header_priority` headers
+- **Multi-line Authorization hardening**: `ForwardedToken.normalize_auth` is anchored with `\A`/`\z` (previously `^`/`$`) and only accepts space/tab between the scheme and token, so a multi-line value cannot smuggle a `Bearer <token>` line past a non-Bearer first line
+- **`peer_preference` honored in trust decisions**: `HeaderGuard` now passes the configured `peer_preference` (`:remote_then_xff` / `:xff_only`) to `ProxyTrust.trusted?`. Previously the preference only affected the `verikloak.bff.selected_peer` env hint and the trust decision always used `:remote_then_xff`, contradicting the documented behavior
+- **`peer_preference` fail-safe**: an unrecognized or `nil` `peer_preference` now resolves to the safe `REMOTE_ADDR`-first path instead of the client-controlled `X-Forwarded-For`, and `HeaderGuard` raises `ConfigurationError` at startup for an unrecognized value so a typo cannot silently weaken the trust decision
+- **Trusted proxy rule isolation**: a rule that raises (invalid CIDR string, failing Proc) no longer silently disables the remaining `trusted_proxies` rules; each rule is evaluated independently, and the failure is surfaced under `$DEBUG` instead of being swallowed without a trace
+- **Fail-fast IP/CIDR validation**: `HeaderGuard` raises `ConfigurationError` at startup when a `trusted_proxies` string cannot be parsed as an IP or CIDR (previously only CIDR strings containing `/` were checked, so a malformed plain IP such as `10.0.0.999` booted and then silently rejected every request)
+
+### Changed
+- Minimum `verikloak` dependency raised to `~> 1.1` (from `~> 1.0`), matching the coordinated 1.1.0 core / 1.2.0 verikloak-rails release; `verikloak-rails` 1.2.0 already requires `verikloak ~> 1.1`
+- **`Verikloak::BFF::Rails::Middleware.insert_before_core` added**: inserts HeaderGuard *before* `Verikloak::Middleware`, matching the documented stack order (`[HeaderGuard] → [Verikloak::Middleware] → [App]`) and the behavior of `verikloak-rails`
+- `ForwardedToken.strip_suspicious!` and `Configuration` now share the default `X-Auth-Request-*` header list via `Constants::DEFAULT_AUTH_REQUEST_HEADERS` (previously duplicated)
+- `HeaderGuard` no longer writes the `Authorization` header twice when seeding from `token_header_priority`; the header is written once during request finalization
+
+### Deprecated
+- **`Verikloak::BFF::Rails::Middleware.insert_after_core`**: deprecated in favor of `insert_before_core`. It now emits a deprecation warning and delegates to `insert_before_core`, because inserting HeaderGuard *after* the core middleware let core verification run on un-normalized tokens. The dead `auto_insert_enabled?` / `core_config` checks (which read a `Verikloak.config` that does not exist in the core gem — the real flag lives in `Verikloak::Rails.config`) were removed along the way
+
+### Removed
+- Internal helpers `HeaderGuardSanitizer.token_tags` and `HeaderGuardSanitizer.decode_unverified` (unused since token decoding was consolidated into `RequestTokens`; use `Verikloak::BFF::JwtUtils.decode_unverified` directly if needed)
+- `ProxyTrust.from_trusted_proxy?` (unused thin wrapper around `ProxyTrust.trusted?`; call `ProxyTrust.trusted?(env, trusted, :rightmost, preference: ...)` directly)
+
+---
+
 ## [1.0.0] - 2026-02-15
 
 ### Fixed

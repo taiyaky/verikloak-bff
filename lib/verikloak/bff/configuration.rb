@@ -25,6 +25,7 @@
 #   @return [Logger, nil] optional logger for audit tags
 
 require 'verikloak/header_sources'
+require 'verikloak/bff/constants'
 
 module Verikloak
   module BFF
@@ -59,11 +60,7 @@ module Verikloak
         @logger = nil
         @log_with = nil
         self.forwarded_header_name = Verikloak::HeaderSources::DEFAULT_FORWARDED_HEADER
-        @auth_request_headers = {
-          email: 'HTTP_X_AUTH_REQUEST_EMAIL',
-          user: 'HTTP_X_AUTH_REQUEST_USER',
-          groups: 'HTTP_X_AUTH_REQUEST_GROUPS'
-        }
+        @auth_request_headers = Constants::DEFAULT_AUTH_REQUEST_HEADERS.dup
         # When Authorization is empty and no chosen token exists, try these env headers (in order)
         # to seed Authorization, similar to verikloak-rails behavior. HTTP_AUTHORIZATION is always ignored as a source.
         self.token_header_priority = Verikloak::HeaderSources.default_priority(forwarded_header: @forwarded_header_name)

@@ -32,21 +32,6 @@ module Verikloak
 
       module_function
 
-      # Generate sanitized token metadata suitable for structured logging without
-      # verifying the signature.
-      #
-      # @param token [String, nil]
-      # @return [Hash{Symbol=>Object}] sanitized tags keyed by JWT claim/header
-      def token_tags(token)
-        return {} unless token
-
-        payload, header = decode_unverified(token)
-        token_tags_from_decoded(payload, header)
-      rescue StandardError => e
-        warn("[verikloak-bff] token_tags failed: #{e.class}: #{e.message}") if $DEBUG
-        {}
-      end
-
       # Build sanitized log tags from pre-decoded JWT payload and header.
       # Avoids redundant decoding when the caller already has decoded data.
       #
@@ -67,15 +52,6 @@ module Verikloak
       rescue StandardError => e
         warn("[verikloak-bff] token_tags_from_decoded failed: #{e.class}: #{e.message}") if $DEBUG
         {}
-      end
-
-      # Decode a JWT without verifying the signature while guarding against
-      # excessively large tokens.
-      #
-      # @param token [String, nil]
-      # @return [Array<Hash>] payload and header hashes
-      def decode_unverified(token)
-        Verikloak::BFF::JwtUtils.decode_unverified(token)
       end
 
       # Remove unsafe characters from a structured logging payload.
@@ -212,6 +188,9 @@ module Verikloak
       # Error raised when trusted_proxies is not configured and disabled is not explicitly set.
       class ConfigurationError < StandardError; end
 
+      # Recognized values for the `peer_preference` setting.
+      VALID_PEER_PREFERENCES = %i[remote_then_xff xff_only].freeze
+
       RequestTokens = Struct.new(:auth, :forwarded, :chosen, :decoded_payload, :decoded_header)
 
       # Accept both Rack 2 and Rack 3 builder call styles:
@@ -277,8 +256,10 @@ module Verikloak
 
       private
 
-      # Validate that required configuration is present.
-      # Raises ConfigurationError if trusted_proxies is not configured and disabled is false.
+      # Validate that required configuration is present and well-formed.
+      # Raises ConfigurationError if trusted_proxies is not configured and disabled is false,
+      # when an IP/CIDR rule cannot be parsed, or when peer_preference is unrecognized
+      # (fail-fast instead of silently rejecting every request at runtime).
       #
       # @raise [ConfigurationError]
       # @return [void]
@@ -286,12 +267,53 @@ module Verikloak
         return if @config.disabled
 
         proxies = @config.trusted_proxies
-        return unless proxies.nil? || proxies.empty?
+        if proxies.nil? || proxies.empty?
+          raise ConfigurationError,
+                'trusted_proxies must be configured for Verikloak::BFF::HeaderGuard. ' \
+                'Set trusted_proxies to an array of allowed proxy addresses/CIDRs, ' \
+                'or set disabled: true to explicitly skip BFF protection.'
+        end
+
+        validate_trusted_proxy_rules!(proxies)
+        validate_peer_preference!
+      end
+
+      # Fail fast on unparsable IP/CIDR strings in trusted_proxies. Both plain
+      # IPs (exact-match rules) and CIDRs are checked, since a malformed plain
+      # IP would otherwise boot successfully and silently reject every request.
+      # Parsing is delegated to ProxyTrust.ip_or_nil so validation and runtime
+      # matching stay in lockstep.
+      #
+      # @param proxies [Array<String, Regexp, Proc>]
+      # @raise [ConfigurationError]
+      # @return [void]
+      def validate_trusted_proxy_rules!(proxies)
+        proxies.each do |rule|
+          next unless rule.is_a?(String)
+          next if ProxyTrust.ip_or_nil(rule)
+
+          kind = rule.include?('/') ? 'CIDR' : 'IP'
+          raise ConfigurationError,
+                "invalid #{kind} rule in trusted_proxies: #{rule.inspect}. " \
+                'Fix the rule so that proxy trust checks can match it.'
+        end
+      end
+
+      # Fail fast on an unrecognized peer_preference so a typo cannot silently
+      # change which peer the trust decision is based on (ProxyTrust treats any
+      # non-:xff_only value as the safe REMOTE_ADDR-first path, which would mask
+      # an intended :xff_only that was misspelled).
+      #
+      # @raise [ConfigurationError]
+      # @return [void]
+      def validate_peer_preference!
+        pref = @config.peer_preference
+        return if pref.nil?
+        return if VALID_PEER_PREFERENCES.include?(pref.to_s.to_sym)
 
         raise ConfigurationError,
-              'trusted_proxies must be configured for Verikloak::BFF::HeaderGuard. ' \
-              'Set trusted_proxies to an array of allowed proxy addresses/CIDRs, ' \
-              'or set disabled: true to explicitly skip BFF protection.'
+              "invalid peer_preference: #{pref.inspect}. " \
+              'Expected :remote_then_xff or :xff_only (or nil for the default).'
       end
 
       # Build token state by extracting, validating, and selecting the active token.
@@ -361,11 +383,14 @@ module Verikloak
       end
 
       # Raise when the request did not come through a trusted proxy.
+      # Honors the configured peer_preference (:remote_then_xff or :xff_only)
+      # when selecting the peer used for the trust decision.
       #
       # @param env [Hash]
       # @raise [UntrustedProxyError]
       def ensure_trusted_proxy!(env)
-        return if ProxyTrust.trusted?(env, @config.trusted_proxies, @config.xff_strategy)
+        return if ProxyTrust.trusted?(env, @config.trusted_proxies, @config.xff_strategy,
+                                      preference: @config.peer_preference)
 
         raise UntrustedProxyError
       end
@@ -444,35 +469,35 @@ module Verikloak
       end
 
       # Resolve the first env header from which to source a bearer token.
-      # Forwarded is considered only when the peer is trusted; HTTP_AUTHORIZATION is never a source.
+      # HTTP_AUTHORIZATION is never a source. Proxy trust is already guaranteed
+      # by stage 1 ({#ensure_trusted_proxy!}) before this is reached.
       #
       # @param env [Hash]
       # @return [String, nil]
       def resolve_first_token_header(env)
-        candidates = Array(@config.token_header_priority).dup
-        candidates -= [Verikloak::HeaderSources::AUTHORIZATION_HEADER]
-        fwd_key = @config.forwarded_header_name || Verikloak::HeaderSources::DEFAULT_FORWARDED_HEADER
-        if candidates.include?(fwd_key) && !ProxyTrust.from_trusted_proxy?(env, @config.trusted_proxies)
-          candidates -= [fwd_key]
-        end
+        candidates = Array(@config.token_header_priority) - [Verikloak::HeaderSources::AUTHORIZATION_HEADER]
         candidates.find { |k| (v = env[k]) && !v.to_s.empty? }
       end
 
-      # Seed Authorization from priority headers if nothing chosen and empty Authorization.
+      # Seed the chosen token from priority headers when no usable token was
+      # chosen. `chosen` is nil only when Authorization held no valid Bearer
+      # token (normalize_auth already treats a bare "Bearer" as absent) and no
+      # forwarded token was present, so inspecting the raw Authorization header
+      # here would re-introduce the empty-Bearer shadowing bug. The Authorization
+      # header itself is written once later by {#normalize_authorization!} from
+      # the chosen token.
       #
       # @param env [Hash]
       # @param chosen [String, nil]
       # @return [String, nil] possibly updated chosen token
       def seed_authorization_if_needed(env, chosen)
-        return chosen unless chosen.nil? && env['HTTP_AUTHORIZATION'].to_s.empty?
+        return chosen unless chosen.nil?
         return chosen unless Array(@config.token_header_priority).any?
 
         seeded = resolve_first_token_header(env)
-        if seeded
-          ForwardedToken.set_authorization!(env, env[seeded])
-          return ForwardedToken.normalize_forwarded(env[seeded]) || env[seeded].to_s
-        end
-        chosen
+        return chosen unless seeded
+
+        ForwardedToken.normalize_forwarded(env[seeded]) || env[seeded].to_s
       end
 
       # Expose hints to downstream middleware or apps.

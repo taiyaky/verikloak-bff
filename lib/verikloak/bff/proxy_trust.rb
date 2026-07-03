@@ -19,11 +19,13 @@ module Verikloak
       #   - Regexp: matched against the selected peer IP
       #   - Proc: called as `->(ip, env) { ... }` and returns truthy when trusted
       # @param strategy [Symbol, String] `:rightmost` (default) or `:leftmost` for XFF parsing
+      # @param preference [Symbol] `:remote_then_xff` (default) prefers REMOTE_ADDR,
+      #   `:xff_only` selects the peer from X-Forwarded-For first
       # @return [Boolean] true if the selected peer is trusted
       # @example CIDR + Regex allowlist
       #   ProxyTrust.trusted?(env, ["10.0.0.0/8", /^192\.168\./], :rightmost)
-      def trusted?(env, trusted, strategy = :rightmost)
-        remote = resolve_peer(env, :remote_then_xff, strategy)
+      def trusted?(env, trusted, strategy = :rightmost, preference: :remote_then_xff)
+        remote = resolve_peer(env, preference, strategy)
         trusted_remote?(remote, trusted, env)
       end
 
@@ -68,6 +70,9 @@ module Verikloak
       end
 
       # Check whether a single rule trusts the selected remote.
+      # A rule that raises (e.g. an invalid CIDR string or a failing Proc) is
+      # treated as non-matching so that one bad rule cannot disable the rest
+      # of the allowlist.
       #
       # @param rule [String, Regexp, Proc]
       # @param remote [String]
@@ -90,31 +95,33 @@ module Verikloak
         else
           false
         end
-      end
-
-      # Determine if the request originates from a trusted proxy subnet.
-      # Rails-aligned behavior: prefer REMOTE_ADDR, fallback to nearest (rightmost) X-Forwarded-For.
-      #
-      # @param env [Hash]
-      # @param trusted [Array<String, Regexp, Proc>, nil]
-      # @return [Boolean]
-      def self.from_trusted_proxy?(env, trusted)
-        trusted?(env, trusted, :rightmost)
+      rescue StandardError => e
+        # Isolate a single failing rule without disabling the rest of the
+        # allowlist, but surface it under $DEBUG so a broken Proc/CIDR rule is
+        # observable instead of silently denying trust.
+        warn("[verikloak-bff] trusted_proxies rule raised and was skipped: #{e.class}: #{e.message}") if $DEBUG
+        false
       end
 
       # Resolve the peer value based on preference and strategy.
+      #
+      # Only `:xff_only` selects the peer from X-Forwarded-For first. Every other
+      # value — the `:remote_then_xff` default, `nil`, or an unrecognized/typo'd
+      # preference — falls back to the safe REMOTE_ADDR-first path so a
+      # misconfiguration can never switch the trust decision onto the
+      # client-controlled X-Forwarded-For header.
       #
       # @param env [Hash]
       # @param preference [Symbol]
       # @param strategy [Symbol]
       # @return [String, nil]
       def resolve_peer(env, preference, strategy)
-        case preference.to_s.to_sym
-        when :remote_then_xff
-          remote = (env['REMOTE_ADDR'] || '').to_s.strip
-          return remote unless remote.empty?
-          # Fall back to X-Forwarded-For when REMOTE_ADDR is empty
-        end
+        return extract_peer_ip(env, strategy) if preference.to_s.to_sym == :xff_only
+
+        remote = (env['REMOTE_ADDR'] || '').to_s.strip
+        return remote unless remote.empty?
+
+        # Fall back to X-Forwarded-For when REMOTE_ADDR is empty
         extract_peer_ip(env, strategy)
       end
 

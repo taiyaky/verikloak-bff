@@ -6,9 +6,14 @@ module Verikloak
     module Rails
       # Middleware management utilities for Rails applications.
       #
-      # This module focuses on inserting the HeaderGuard middleware right after
-      # the core Verikloak middleware while gracefully handling stacks that do
-      # not contain the core component.
+      # This module focuses on inserting the HeaderGuard middleware right before
+      # the core Verikloak middleware (so tokens are normalized before core
+      # verification) while gracefully handling stacks that do not contain the
+      # core component.
+      #
+      # NOTE: When `verikloak-rails` is installed, middleware insertion happens
+      # automatically via its railtie — these helpers are only needed for manual
+      # (non verikloak-rails) setups.
       module Middleware
         module_function
 
@@ -17,12 +22,17 @@ module Verikloak
         SKIP_MESSAGE = <<~MSG.chomp.freeze
           [verikloak-bff] Skipping Verikloak::BFF::HeaderGuard insertion because Verikloak::Middleware is not present. Configure verikloak-rails discovery settings and restart once core verification is enabled.
         MSG
+        DEPRECATION_MESSAGE = <<~MSG.chomp.freeze
+          [verikloak-bff] Verikloak::BFF::Rails::Middleware.insert_after_core is deprecated and will be removed in a future release. Use insert_before_core instead — HeaderGuard must run before Verikloak::Middleware so that tokens are normalized prior to verification. insert_after_core now delegates to insert_before_core.
+        MSG
 
-        # Inserts Verikloak::BFF::HeaderGuard middleware after Verikloak::Middleware
+        # Inserts Verikloak::BFF::HeaderGuard middleware before Verikloak::Middleware
         #
         # Attempts to insert the HeaderGuard middleware into the Rails middleware stack
-        # after the core Verikloak::Middleware. If the core middleware is not present,
-        # logs a warning and gracefully skips the insertion.
+        # before the core Verikloak::Middleware, matching the documented stack order:
+        #   [Verikloak::BFF::HeaderGuard] → [Verikloak::Middleware] → [Your App]
+        # If the core middleware is not present, logs a warning and gracefully skips
+        # the insertion.
         #
         # @param stack [ActionDispatch::MiddlewareStack] Rails middleware stack
         # @param logger [Logger, nil] Optional logger for warning messages
@@ -30,13 +40,11 @@ module Verikloak
         # @raise [RuntimeError] Re-raises non-middleware-related runtime errors
         #
         # @example Inserting middleware in Rails configuration
-        #   Verikloak::BFF::Rails::Middleware.insert_after_core(
+        #   Verikloak::BFF::Rails::Middleware.insert_before_core(
         #     Rails.application.config.middleware,
         #     logger: Rails.logger
         #   )
-        def insert_after_core(stack, logger: nil)
-          return false unless auto_insert_enabled?
-
+        def insert_before_core(stack, logger: nil)
           core = core_middleware
           header_guard = header_guard_middleware
 
@@ -45,7 +53,7 @@ module Verikloak
             return false
           end
 
-          stack.insert_after(core, header_guard)
+          stack.insert_before(core, header_guard)
           true
         rescue RuntimeError => e
           raise unless missing_core?(e)
@@ -54,35 +62,18 @@ module Verikloak
           false
         end
 
-        # Determine whether automatic insertion is enabled via Verikloak core configuration.
+        # @deprecated Use {.insert_before_core} instead. The previous behavior
+        #   (inserting HeaderGuard *after* the core middleware) contradicted the
+        #   documented stack order and let core verification see un-normalized
+        #   tokens. This method now delegates to {.insert_before_core} and emits
+        #   a deprecation warning.
         #
-        # When the core gem exposes +auto_insert_bff_header_guard+, respect that flag so
-        # consumers can opt out of automatic middleware wiring without triggering warnings.
-        # Any failures while reading configuration default to enabling insertion in order
-        # to preserve the previous behavior.
-        #
-        # @return [Boolean]
-        def auto_insert_enabled?
-          config = core_config
-          return true unless config
-
-          return config.auto_insert_bff_header_guard if config.respond_to?(:auto_insert_bff_header_guard)
-
-          true
-        rescue StandardError
-          true
-        end
-
-        # Returns the Verikloak configuration object when available.
-        #
-        # @return [Object, nil]
-        def core_config
-          return nil unless defined?(::Verikloak)
-          return nil unless ::Verikloak.respond_to?(:config)
-
-          ::Verikloak.config
-        rescue StandardError
-          nil
+        # @param stack [ActionDispatch::MiddlewareStack] Rails middleware stack
+        # @param logger [Logger, nil] Optional logger for warning messages
+        # @return [Boolean] true if insertion succeeded, false if skipped
+        def insert_after_core(stack, logger: nil)
+          logger ? logger.warn(DEPRECATION_MESSAGE) : warn(DEPRECATION_MESSAGE)
+          insert_before_core(stack, logger: logger)
         end
 
         # Detect whether the Verikloak core middleware is already present in the stack.
@@ -132,17 +123,10 @@ module Verikloak
         # Checks if the error indicates missing core Verikloak middleware
         #
         # Examines a RuntimeError to determine if it was caused by attempting
-        # to insert middleware after a non-existent Verikloak::Middleware.
+        # to insert middleware relative to a non-existent Verikloak::Middleware.
         #
         # @param error [RuntimeError] The error to examine
         # @return [Boolean] true if error indicates missing Verikloak::Middleware
-        #
-        # @example Checking for missing middleware error
-        #   begin
-        #     stack.insert_after(::Verikloak::Middleware, SomeMiddleware)
-        #   rescue RuntimeError => e
-        #     puts "Missing core!" if missing_core?(e)
-        #   end
         def missing_core?(error)
           error.message.include?('No such middleware') &&
             error.message.include?(CORE_NAME)
@@ -155,12 +139,6 @@ module Verikloak
         # Uses the provided logger if available, otherwise falls back to warn().
         #
         # @param logger [Logger, nil] Optional logger instance for structured logging
-        #
-        # @example Logging with Rails logger
-        #   log_skip(Rails.logger)
-        #
-        # @example Logging without logger (uses warn)
-        #   log_skip(nil)
         def log_skip(logger)
           logger ? logger.warn(SKIP_MESSAGE) : warn(SKIP_MESSAGE)
         end
