@@ -188,6 +188,9 @@ module Verikloak
       # Error raised when trusted_proxies is not configured and disabled is not explicitly set.
       class ConfigurationError < StandardError; end
 
+      # Recognized values for the `peer_preference` setting.
+      VALID_PEER_PREFERENCES = %i[remote_then_xff xff_only].freeze
+
       RequestTokens = Struct.new(:auth, :forwarded, :chosen, :decoded_payload, :decoded_header)
 
       # Accept both Rack 2 and Rack 3 builder call styles:
@@ -255,8 +258,8 @@ module Verikloak
 
       # Validate that required configuration is present and well-formed.
       # Raises ConfigurationError if trusted_proxies is not configured and disabled is false,
-      # or when a CIDR rule cannot be parsed (fail-fast instead of silently rejecting
-      # every request at runtime).
+      # when an IP/CIDR rule cannot be parsed, or when peer_preference is unrecognized
+      # (fail-fast instead of silently rejecting every request at runtime).
       #
       # @raise [ConfigurationError]
       # @return [void]
@@ -272,25 +275,45 @@ module Verikloak
         end
 
         validate_trusted_proxy_rules!(proxies)
+        validate_peer_preference!
       end
 
-      # Fail fast on unparsable CIDR strings in trusted_proxies.
+      # Fail fast on unparsable IP/CIDR strings in trusted_proxies. Both plain
+      # IPs (exact-match rules) and CIDRs are checked, since a malformed plain
+      # IP would otherwise boot successfully and silently reject every request.
+      # Parsing is delegated to ProxyTrust.ip_or_nil so validation and runtime
+      # matching stay in lockstep.
       #
       # @param proxies [Array<String, Regexp, Proc>]
       # @raise [ConfigurationError]
       # @return [void]
       def validate_trusted_proxy_rules!(proxies)
         proxies.each do |rule|
-          next unless rule.is_a?(String) && rule.include?('/')
+          next unless rule.is_a?(String)
+          next if ProxyTrust.ip_or_nil(rule)
 
-          begin
-            IPAddr.new(rule)
-          rescue StandardError
-            raise ConfigurationError,
-                  "invalid CIDR rule in trusted_proxies: #{rule.inspect}. " \
-                  'Fix the rule so that proxy trust checks can match it.'
-          end
+          kind = rule.include?('/') ? 'CIDR' : 'IP'
+          raise ConfigurationError,
+                "invalid #{kind} rule in trusted_proxies: #{rule.inspect}. " \
+                'Fix the rule so that proxy trust checks can match it.'
         end
+      end
+
+      # Fail fast on an unrecognized peer_preference so a typo cannot silently
+      # change which peer the trust decision is based on (ProxyTrust treats any
+      # non-:xff_only value as the safe REMOTE_ADDR-first path, which would mask
+      # an intended :xff_only that was misspelled).
+      #
+      # @raise [ConfigurationError]
+      # @return [void]
+      def validate_peer_preference!
+        pref = @config.peer_preference
+        return if pref.nil?
+        return if VALID_PEER_PREFERENCES.include?(pref.to_s.to_sym)
+
+        raise ConfigurationError,
+              "invalid peer_preference: #{pref.inspect}. " \
+              'Expected :remote_then_xff or :xff_only (or nil for the default).'
       end
 
       # Build token state by extracting, validating, and selecting the active token.
@@ -367,7 +390,7 @@ module Verikloak
       # @raise [UntrustedProxyError]
       def ensure_trusted_proxy!(env)
         return if ProxyTrust.trusted?(env, @config.trusted_proxies, @config.xff_strategy,
-                                      preference: @config.peer_preference || :remote_then_xff)
+                                      preference: @config.peer_preference)
 
         raise UntrustedProxyError
       end
@@ -456,15 +479,19 @@ module Verikloak
         candidates.find { |k| (v = env[k]) && !v.to_s.empty? }
       end
 
-      # Seed the chosen token from priority headers if nothing chosen and empty
-      # Authorization. The Authorization header itself is written once later by
-      # {#normalize_authorization!} from the chosen token.
+      # Seed the chosen token from priority headers when no usable token was
+      # chosen. `chosen` is nil only when Authorization held no valid Bearer
+      # token (normalize_auth already treats a bare "Bearer" as absent) and no
+      # forwarded token was present, so inspecting the raw Authorization header
+      # here would re-introduce the empty-Bearer shadowing bug. The Authorization
+      # header itself is written once later by {#normalize_authorization!} from
+      # the chosen token.
       #
       # @param env [Hash]
       # @param chosen [String, nil]
       # @return [String, nil] possibly updated chosen token
       def seed_authorization_if_needed(env, chosen)
-        return chosen unless chosen.nil? && env['HTTP_AUTHORIZATION'].to_s.empty?
+        return chosen unless chosen.nil?
         return chosen unless Array(@config.token_header_priority).any?
 
         seeded = resolve_first_token_header(env)

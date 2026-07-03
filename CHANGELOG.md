@@ -10,10 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- **Empty Bearer Authorization**: `ForwardedToken.normalize_auth` now returns `nil` for a Bearer scheme without a token (e.g. `Authorization: Bearer`). Previously it returned an empty string, which caused a spurious `401 header_mismatch` when a valid forwarded token was present
+- **Empty Bearer Authorization**: `ForwardedToken.normalize_auth` now returns `nil` for a Bearer scheme without a token (e.g. `Authorization: Bearer`). Previously it returned an empty string, which caused a spurious `401 header_mismatch` when a valid forwarded token was present. `seed_authorization_if_needed` no longer re-inspects the raw `HTTP_AUTHORIZATION` value either, so a bare `Authorization: Bearer` no longer blocks seeding a valid token from `token_header_priority` headers
+- **Multi-line Authorization hardening**: `ForwardedToken.normalize_auth` is anchored with `\A`/`\z` (previously `^`/`$`) and only accepts space/tab between the scheme and token, so a multi-line value cannot smuggle a `Bearer <token>` line past a non-Bearer first line
 - **`peer_preference` honored in trust decisions**: `HeaderGuard` now passes the configured `peer_preference` (`:remote_then_xff` / `:xff_only`) to `ProxyTrust.trusted?`. Previously the preference only affected the `verikloak.bff.selected_peer` env hint and the trust decision always used `:remote_then_xff`, contradicting the documented behavior
-- **Trusted proxy rule isolation**: a rule that raises (invalid CIDR string, failing Proc) no longer silently disables the remaining `trusted_proxies` rules; each rule is evaluated independently
-- **Fail-fast CIDR validation**: `HeaderGuard` raises `ConfigurationError` at startup when a `trusted_proxies` CIDR string cannot be parsed, instead of silently rejecting every request at runtime
+- **`peer_preference` fail-safe**: an unrecognized or `nil` `peer_preference` now resolves to the safe `REMOTE_ADDR`-first path instead of the client-controlled `X-Forwarded-For`, and `HeaderGuard` raises `ConfigurationError` at startup for an unrecognized value so a typo cannot silently weaken the trust decision
+- **Trusted proxy rule isolation**: a rule that raises (invalid CIDR string, failing Proc) no longer silently disables the remaining `trusted_proxies` rules; each rule is evaluated independently, and the failure is surfaced under `$DEBUG` instead of being swallowed without a trace
+- **Fail-fast IP/CIDR validation**: `HeaderGuard` raises `ConfigurationError` at startup when a `trusted_proxies` string cannot be parsed as an IP or CIDR (previously only CIDR strings containing `/` were checked, so a malformed plain IP such as `10.0.0.999` booted and then silently rejected every request)
 
 ### Changed
 - **`Verikloak::BFF::Rails::Middleware.insert_before_core` added**: inserts HeaderGuard *before* `Verikloak::Middleware`, matching the documented stack order (`[HeaderGuard] → [Verikloak::Middleware] → [App]`) and the behavior of `verikloak-rails`

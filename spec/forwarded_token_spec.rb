@@ -62,6 +62,14 @@ RSpec.describe Verikloak::BFF::ForwardedToken do
     it 'returns nil for Bearer scheme with trailing whitespace only' do
       expect(described_class.normalize_auth('Bearer ')).to be_nil
     end
+
+    it 'does not treat a Bearer line after a non-Bearer first line as Bearer' do
+      expect(described_class.normalize_auth("Basic abc\nBearer evil")).to be_nil
+    end
+
+    it 'does not mis-slice a multi-line value with an embedded Bearer' do
+      expect(described_class.normalize_auth("x\nBearerabc")).to be_nil
+    end
   end
 
   describe '.normalize_forwarded' do

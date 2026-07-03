@@ -33,20 +33,16 @@ module Verikloak
       # absent so that an empty Authorization header never shadows a valid
       # forwarded token.
       #
+      # The pattern is anchored with \A/\z (not ^/$) so a multi-line value
+      # cannot smuggle a "Bearer <token>" line past a non-Bearer first line,
+      # and only space/tab may separate the scheme from the token.
+      #
       # @param raw [String, nil]
       # @return [String, nil] token or nil when not Bearer or token is empty
       def normalize_auth(raw)
         return nil unless raw
 
-        token = raw.to_s.strip
-        return ::Regexp.last_match(1) if token =~ /^Bearer\s+(.+)$/i
-
-        if token =~ /^Bearer(?!\s)/i
-          rest = token[6..].to_s
-          return rest.empty? ? nil : rest
-        end
-
-        nil
+        raw.to_s.strip[/\ABearer[ \t]*(.+)\z/i, 1]
       end
 
       # Accept either bare token or Bearer for forwarded header.

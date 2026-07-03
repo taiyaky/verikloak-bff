@@ -105,6 +105,17 @@ RSpec.describe Verikloak::BFF::HeaderGuard do
     expect(last_request.env["HTTP_AUTHORIZATION"]).to eq "Bearer fwdtoken"
   end
 
+  it "seeds a priority-header token when Authorization is an empty Bearer" do
+    @app = build_app(trusted_proxies: ["127.0.0.1"],
+                     token_header_priority: %w[HTTP_X_AUTH_REQUEST_ACCESS_TOKEN])
+    header "X-Forwarded-For", "127.0.0.1"
+    header "Authorization", "Bearer"
+    header "X-Auth-Request-Access-Token", "seeded-token"
+    get "/"
+    expect(last_response.status).to eq 200
+    expect(last_request.env["HTTP_AUTHORIZATION"]).to eq "Bearer seeded-token"
+  end
+
   it "rejects when both headers present and mismatch" do
     header "X-Forwarded-For", "127.0.0.1"
     header "X-Forwarded-Access-Token", "Bearer fwd"
@@ -125,6 +136,18 @@ RSpec.describe Verikloak::BFF::HeaderGuard do
       expect {
         build_app(trusted_proxies: ["10.0.0/8"]).to_app
       }.to raise_error(Verikloak::BFF::HeaderGuard::ConfigurationError, /invalid CIDR rule/)
+    end
+
+    it "raises ConfigurationError for an unparsable plain-IP rule at startup" do
+      expect {
+        build_app(trusted_proxies: ["10.0.0.999"]).to_app
+      }.to raise_error(Verikloak::BFF::HeaderGuard::ConfigurationError, /invalid IP rule/)
+    end
+
+    it "raises ConfigurationError for an unrecognized peer_preference at startup" do
+      expect {
+        build_app(trusted_proxies: ["10.0.0.0/8"], peer_preference: :remote_first).to_app
+      }.to raise_error(Verikloak::BFF::HeaderGuard::ConfigurationError, /invalid peer_preference/)
     end
 
     it "passes through when disabled: true is set explicitly" do
