@@ -1,8 +1,11 @@
 # frozen_string_literal: true
 
 # Helpers shared across verikloak middleware for normalizing Rack env header
-# names and token source priority lists. Extracted to allow other gems (such as
-# verikloak-rails) to consume the same normalization logic.
+# names and token source priority lists.
+#
+# NOTE: This file lives under the shared `Verikloak::` namespace but is
+# currently shipped by verikloak-bff only. Moving it into the core `verikloak`
+# gem is planned so that sibling gems can share it without load-path conflicts.
 module Verikloak
   # Provides normalization helpers for Rack env header keys and token priority lists.
   module HeaderSources

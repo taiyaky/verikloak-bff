@@ -54,6 +54,14 @@ RSpec.describe Verikloak::BFF::ForwardedToken do
     it 'returns nil for empty string' do
       expect(described_class.normalize_auth('')).to be_nil
     end
+
+    it 'returns nil for Bearer scheme without a token' do
+      expect(described_class.normalize_auth('Bearer')).to be_nil
+    end
+
+    it 'returns nil for Bearer scheme with trailing whitespace only' do
+      expect(described_class.normalize_auth('Bearer ')).to be_nil
+    end
   end
 
   describe '.normalize_forwarded' do

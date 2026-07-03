@@ -19,11 +19,13 @@ module Verikloak
       #   - Regexp: matched against the selected peer IP
       #   - Proc: called as `->(ip, env) { ... }` and returns truthy when trusted
       # @param strategy [Symbol, String] `:rightmost` (default) or `:leftmost` for XFF parsing
+      # @param preference [Symbol] `:remote_then_xff` (default) prefers REMOTE_ADDR,
+      #   `:xff_only` selects the peer from X-Forwarded-For first
       # @return [Boolean] true if the selected peer is trusted
       # @example CIDR + Regex allowlist
       #   ProxyTrust.trusted?(env, ["10.0.0.0/8", /^192\.168\./], :rightmost)
-      def trusted?(env, trusted, strategy = :rightmost)
-        remote = resolve_peer(env, :remote_then_xff, strategy)
+      def trusted?(env, trusted, strategy = :rightmost, preference: :remote_then_xff)
+        remote = resolve_peer(env, preference, strategy)
         trusted_remote?(remote, trusted, env)
       end
 
@@ -68,6 +70,9 @@ module Verikloak
       end
 
       # Check whether a single rule trusts the selected remote.
+      # A rule that raises (e.g. an invalid CIDR string or a failing Proc) is
+      # treated as non-matching so that one bad rule cannot disable the rest
+      # of the allowlist.
       #
       # @param rule [String, Regexp, Proc]
       # @param remote [String]
@@ -90,6 +95,8 @@ module Verikloak
         else
           false
         end
+      rescue StandardError
+        false
       end
 
       # Determine if the request originates from a trusted proxy subnet.
@@ -97,9 +104,10 @@ module Verikloak
       #
       # @param env [Hash]
       # @param trusted [Array<String, Regexp, Proc>, nil]
+      # @param preference [Symbol] :remote_then_xff or :xff_only
       # @return [Boolean]
-      def self.from_trusted_proxy?(env, trusted)
-        trusted?(env, trusted, :rightmost)
+      def self.from_trusted_proxy?(env, trusted, preference: :remote_then_xff)
+        trusted?(env, trusted, :rightmost, preference: preference)
       end
 
       # Resolve the peer value based on preference and strategy.

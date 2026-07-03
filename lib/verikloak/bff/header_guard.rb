@@ -32,21 +32,6 @@ module Verikloak
 
       module_function
 
-      # Generate sanitized token metadata suitable for structured logging without
-      # verifying the signature.
-      #
-      # @param token [String, nil]
-      # @return [Hash{Symbol=>Object}] sanitized tags keyed by JWT claim/header
-      def token_tags(token)
-        return {} unless token
-
-        payload, header = decode_unverified(token)
-        token_tags_from_decoded(payload, header)
-      rescue StandardError => e
-        warn("[verikloak-bff] token_tags failed: #{e.class}: #{e.message}") if $DEBUG
-        {}
-      end
-
       # Build sanitized log tags from pre-decoded JWT payload and header.
       # Avoids redundant decoding when the caller already has decoded data.
       #
@@ -67,15 +52,6 @@ module Verikloak
       rescue StandardError => e
         warn("[verikloak-bff] token_tags_from_decoded failed: #{e.class}: #{e.message}") if $DEBUG
         {}
-      end
-
-      # Decode a JWT without verifying the signature while guarding against
-      # excessively large tokens.
-      #
-      # @param token [String, nil]
-      # @return [Array<Hash>] payload and header hashes
-      def decode_unverified(token)
-        Verikloak::BFF::JwtUtils.decode_unverified(token)
       end
 
       # Remove unsafe characters from a structured logging payload.
@@ -277,8 +253,10 @@ module Verikloak
 
       private
 
-      # Validate that required configuration is present.
-      # Raises ConfigurationError if trusted_proxies is not configured and disabled is false.
+      # Validate that required configuration is present and well-formed.
+      # Raises ConfigurationError if trusted_proxies is not configured and disabled is false,
+      # or when a CIDR rule cannot be parsed (fail-fast instead of silently rejecting
+      # every request at runtime).
       #
       # @raise [ConfigurationError]
       # @return [void]
@@ -286,12 +264,33 @@ module Verikloak
         return if @config.disabled
 
         proxies = @config.trusted_proxies
-        return unless proxies.nil? || proxies.empty?
+        if proxies.nil? || proxies.empty?
+          raise ConfigurationError,
+                'trusted_proxies must be configured for Verikloak::BFF::HeaderGuard. ' \
+                'Set trusted_proxies to an array of allowed proxy addresses/CIDRs, ' \
+                'or set disabled: true to explicitly skip BFF protection.'
+        end
 
-        raise ConfigurationError,
-              'trusted_proxies must be configured for Verikloak::BFF::HeaderGuard. ' \
-              'Set trusted_proxies to an array of allowed proxy addresses/CIDRs, ' \
-              'or set disabled: true to explicitly skip BFF protection.'
+        validate_trusted_proxy_rules!(proxies)
+      end
+
+      # Fail fast on unparsable CIDR strings in trusted_proxies.
+      #
+      # @param proxies [Array<String, Regexp, Proc>]
+      # @raise [ConfigurationError]
+      # @return [void]
+      def validate_trusted_proxy_rules!(proxies)
+        proxies.each do |rule|
+          next unless rule.is_a?(String) && rule.include?('/')
+
+          begin
+            IPAddr.new(rule)
+          rescue StandardError
+            raise ConfigurationError,
+                  "invalid CIDR rule in trusted_proxies: #{rule.inspect}. " \
+                  'Fix the rule so that proxy trust checks can match it.'
+          end
+        end
       end
 
       # Build token state by extracting, validating, and selecting the active token.
@@ -361,11 +360,14 @@ module Verikloak
       end
 
       # Raise when the request did not come through a trusted proxy.
+      # Honors the configured peer_preference (:remote_then_xff or :xff_only)
+      # when selecting the peer used for the trust decision.
       #
       # @param env [Hash]
       # @raise [UntrustedProxyError]
       def ensure_trusted_proxy!(env)
-        return if ProxyTrust.trusted?(env, @config.trusted_proxies, @config.xff_strategy)
+        return if ProxyTrust.trusted?(env, @config.trusted_proxies, @config.xff_strategy,
+                                      preference: @config.peer_preference || :remote_then_xff)
 
         raise UntrustedProxyError
       end
@@ -444,21 +446,19 @@ module Verikloak
       end
 
       # Resolve the first env header from which to source a bearer token.
-      # Forwarded is considered only when the peer is trusted; HTTP_AUTHORIZATION is never a source.
+      # HTTP_AUTHORIZATION is never a source. Proxy trust is already guaranteed
+      # by stage 1 ({#ensure_trusted_proxy!}) before this is reached.
       #
       # @param env [Hash]
       # @return [String, nil]
       def resolve_first_token_header(env)
-        candidates = Array(@config.token_header_priority).dup
-        candidates -= [Verikloak::HeaderSources::AUTHORIZATION_HEADER]
-        fwd_key = @config.forwarded_header_name || Verikloak::HeaderSources::DEFAULT_FORWARDED_HEADER
-        if candidates.include?(fwd_key) && !ProxyTrust.from_trusted_proxy?(env, @config.trusted_proxies)
-          candidates -= [fwd_key]
-        end
+        candidates = Array(@config.token_header_priority) - [Verikloak::HeaderSources::AUTHORIZATION_HEADER]
         candidates.find { |k| (v = env[k]) && !v.to_s.empty? }
       end
 
-      # Seed Authorization from priority headers if nothing chosen and empty Authorization.
+      # Seed the chosen token from priority headers if nothing chosen and empty
+      # Authorization. The Authorization header itself is written once later by
+      # {#normalize_authorization!} from the chosen token.
       #
       # @param env [Hash]
       # @param chosen [String, nil]
@@ -468,11 +468,9 @@ module Verikloak
         return chosen unless Array(@config.token_header_priority).any?
 
         seeded = resolve_first_token_header(env)
-        if seeded
-          ForwardedToken.set_authorization!(env, env[seeded])
-          return ForwardedToken.normalize_forwarded(env[seeded]) || env[seeded].to_s
-        end
-        chosen
+        return chosen unless seeded
+
+        ForwardedToken.normalize_forwarded(env[seeded]) || env[seeded].to_s
       end
 
       # Expose hints to downstream middleware or apps.

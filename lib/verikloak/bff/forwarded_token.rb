@@ -5,6 +5,7 @@
 # @see .extract
 
 require 'verikloak/header_sources'
+require 'verikloak/bff/constants'
 
 module Verikloak
   module BFF
@@ -28,15 +29,22 @@ module Verikloak
       end
 
       # Only accept Bearer scheme for Authorization header.
+      # A scheme without a token (e.g. "Bearer" or "Bearer ") is treated as
+      # absent so that an empty Authorization header never shadows a valid
+      # forwarded token.
       #
       # @param raw [String, nil]
-      # @return [String, nil] token or nil when not Bearer
+      # @return [String, nil] token or nil when not Bearer or token is empty
       def normalize_auth(raw)
         return nil unless raw
 
         token = raw.to_s.strip
         return ::Regexp.last_match(1) if token =~ /^Bearer\s+(.+)$/i
-        return token[6..] if token =~ /^Bearer(?!\s)/i
+
+        if token =~ /^Bearer(?!\s)/i
+          rest = token[6..].to_s
+          return rest.empty? ? nil : rest
+        end
 
         nil
       end
@@ -105,13 +113,8 @@ module Verikloak
       # @param headers [Hash{Symbol=>String}, nil] explicit headers to strip
       # @return [void]
       def strip_suspicious!(env, headers = nil)
-        if headers.is_a?(Hash)
-          headers.each_value { |h| env.delete(h) }
-          return
-        end
-        env.delete('HTTP_X_AUTH_REQUEST_EMAIL')
-        env.delete('HTTP_X_AUTH_REQUEST_USER')
-        env.delete('HTTP_X_AUTH_REQUEST_GROUPS')
+        headers = Constants::DEFAULT_AUTH_REQUEST_HEADERS unless headers.is_a?(Hash)
+        headers.each_value { |h| env.delete(h) }
       end
     end
   end

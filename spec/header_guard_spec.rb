@@ -96,6 +96,15 @@ RSpec.describe Verikloak::BFF::HeaderGuard do
     end
   end
 
+  it "ignores empty Bearer Authorization and uses forwarded token" do
+    header "X-Forwarded-For", "127.0.0.1"
+    header "Authorization", "Bearer"
+    header "X-Forwarded-Access-Token", "fwdtoken"
+    get "/"
+    expect(last_response.status).to eq 200
+    expect(last_request.env["HTTP_AUTHORIZATION"]).to eq "Bearer fwdtoken"
+  end
+
   it "rejects when both headers present and mismatch" do
     header "X-Forwarded-For", "127.0.0.1"
     header "X-Forwarded-Access-Token", "Bearer fwd"
@@ -110,6 +119,12 @@ RSpec.describe Verikloak::BFF::HeaderGuard do
       expect {
         build_app({}).to_app # .to_app triggers middleware initialization
       }.to raise_error(Verikloak::BFF::HeaderGuard::ConfigurationError, /trusted_proxies must be configured/)
+    end
+
+    it "raises ConfigurationError for an unparsable CIDR rule at startup" do
+      expect {
+        build_app(trusted_proxies: ["10.0.0/8"]).to_app
+      }.to raise_error(Verikloak::BFF::HeaderGuard::ConfigurationError, /invalid CIDR rule/)
     end
 
     it "passes through when disabled: true is set explicitly" do
@@ -154,6 +169,23 @@ RSpec.describe Verikloak::BFF::HeaderGuard do
       header "X-Forwarded-For", "198.51.100.10"
       header "X-Forwarded-Access-Token", "Bearer t"
       get "/", {}, { "REMOTE_ADDR" => "" }
+      expect(last_response.status).to eq 401
+      expect(last_response.headers["WWW-Authenticate"]).to include("untrusted_proxy")
+    end
+
+    it "honors peer_preference :xff_only for the trust decision" do
+      @app = build_app(trusted_proxies: ["10.0.0.0/8"], peer_preference: :xff_only)
+      header "X-Forwarded-For", "10.0.0.5"
+      header "X-Forwarded-Access-Token", "Bearer t"
+      get "/", {}, { "REMOTE_ADDR" => "203.0.113.9" }
+      expect(last_response.status).to eq 200
+    end
+
+    it "rejects with peer_preference :remote_then_xff when REMOTE_ADDR is untrusted" do
+      @app = build_app(trusted_proxies: ["10.0.0.0/8"], peer_preference: :remote_then_xff)
+      header "X-Forwarded-For", "10.0.0.5"
+      header "X-Forwarded-Access-Token", "Bearer t"
+      get "/", {}, { "REMOTE_ADDR" => "203.0.113.9" }
       expect(last_response.status).to eq 401
       expect(last_response.headers["WWW-Authenticate"]).to include("untrusted_proxy")
     end
@@ -385,9 +417,13 @@ RSpec.describe Verikloak::BFF::HeaderGuard do
     end
 
     it "seeds Authorization from priority headers and normalizes Bearer" do
-      # Configure a custom priority header
-      Verikloak::BFF.configure { |c| c.token_header_priority = ['HTTP_X_SOME_TOKEN'] }
-      @app = build_app(trusted_proxies: ["127.0.0.1"], prefer_forwarded: false)
+      # Pass the custom priority as a per-instance option so the global
+      # configuration is not mutated across randomly-ordered examples.
+      @app = build_app(
+        trusted_proxies: ["127.0.0.1"],
+        prefer_forwarded: false,
+        token_header_priority: ['HTTP_X_SOME_TOKEN']
+      )
       header "X-Forwarded-For", "127.0.0.1"
       header "X-Some-Token", "BearerXYZ"
       get "/"

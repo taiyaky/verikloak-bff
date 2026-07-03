@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Empty Bearer Authorization**: `ForwardedToken.normalize_auth` now returns `nil` for a Bearer scheme without a token (e.g. `Authorization: Bearer`). Previously it returned an empty string, which caused a spurious `401 header_mismatch` when a valid forwarded token was present
+- **`peer_preference` honored in trust decisions**: `HeaderGuard` now passes the configured `peer_preference` (`:remote_then_xff` / `:xff_only`) to `ProxyTrust.trusted?`. Previously the preference only affected the `verikloak.bff.selected_peer` env hint and the trust decision always used `:remote_then_xff`, contradicting the documented behavior
+- **Trusted proxy rule isolation**: a rule that raises (invalid CIDR string, failing Proc) no longer silently disables the remaining `trusted_proxies` rules; each rule is evaluated independently
+- **Fail-fast CIDR validation**: `HeaderGuard` raises `ConfigurationError` at startup when a `trusted_proxies` CIDR string cannot be parsed, instead of silently rejecting every request at runtime
+
+### Changed
+- **`Verikloak::BFF::Rails::Middleware.insert_before_core` added**: inserts HeaderGuard *before* `Verikloak::Middleware`, matching the documented stack order (`[HeaderGuard] → [Verikloak::Middleware] → [App]`) and the behavior of `verikloak-rails`
+- `ForwardedToken.strip_suspicious!` and `Configuration` now share the default `X-Auth-Request-*` header list via `Constants::DEFAULT_AUTH_REQUEST_HEADERS` (previously duplicated)
+- `HeaderGuard` no longer writes the `Authorization` header twice when seeding from `token_header_priority`; the header is written once during request finalization
+
+### Deprecated
+- **`Verikloak::BFF::Rails::Middleware.insert_after_core`**: deprecated in favor of `insert_before_core`. It now emits a deprecation warning and delegates to `insert_before_core`, because inserting HeaderGuard *after* the core middleware let core verification run on un-normalized tokens. The dead `auto_insert_enabled?` / `core_config` checks (which read a `Verikloak.config` that does not exist in the core gem — the real flag lives in `Verikloak::Rails.config`) were removed along the way
+
+### Removed
+- Internal helpers `HeaderGuardSanitizer.token_tags` and `HeaderGuardSanitizer.decode_unverified` (unused since token decoding was consolidated into `RequestTokens`; use `Verikloak::BFF::JwtUtils.decode_unverified` directly if needed)
+
+---
+
 ## [1.0.0] - 2026-02-15
 
 ### Fixed

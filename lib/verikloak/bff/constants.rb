@@ -16,6 +16,14 @@ module Verikloak
       # Maximum length for individual log field values to prevent log flooding
       # from oversized or malicious JWT claims.
       MAX_LOG_FIELD_LENGTH = 256
+
+      # Default X-Auth-Request-* env keys, shared by {Configuration} defaults
+      # and {ForwardedToken.strip_suspicious!} so both stay in sync.
+      DEFAULT_AUTH_REQUEST_HEADERS = {
+        email: 'HTTP_X_AUTH_REQUEST_EMAIL',
+        user: 'HTTP_X_AUTH_REQUEST_USER',
+        groups: 'HTTP_X_AUTH_REQUEST_GROUPS'
+      }.freeze
     end
   end
 end
