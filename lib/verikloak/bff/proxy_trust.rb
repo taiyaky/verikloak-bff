@@ -103,17 +103,6 @@ module Verikloak
         false
       end
 
-      # Determine if the request originates from a trusted proxy subnet.
-      # Rails-aligned behavior: prefer REMOTE_ADDR, fallback to nearest (rightmost) X-Forwarded-For.
-      #
-      # @param env [Hash]
-      # @param trusted [Array<String, Regexp, Proc>, nil]
-      # @param preference [Symbol] :remote_then_xff or :xff_only
-      # @return [Boolean]
-      def self.from_trusted_proxy?(env, trusted, preference: :remote_then_xff)
-        trusted?(env, trusted, :rightmost, preference: preference)
-      end
-
       # Resolve the peer value based on preference and strategy.
       #
       # Only `:xff_only` selects the peer from X-Forwarded-For first. Every other

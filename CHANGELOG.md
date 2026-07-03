@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - Internal helpers `HeaderGuardSanitizer.token_tags` and `HeaderGuardSanitizer.decode_unverified` (unused since token decoding was consolidated into `RequestTokens`; use `Verikloak::BFF::JwtUtils.decode_unverified` directly if needed)
+- `ProxyTrust.from_trusted_proxy?` (unused thin wrapper around `ProxyTrust.trusted?`; call `ProxyTrust.trusted?(env, trusted, :rightmost, preference: ...)` directly)
 
 ---
 
