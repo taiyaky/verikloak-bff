@@ -20,6 +20,7 @@ Verified against verikloak 1.1.0 (core) and verikloak-rails 1.2.0.
 - **Fail-fast IP/CIDR validation**: `HeaderGuard` raises `ConfigurationError` at startup when a `trusted_proxies` string cannot be parsed as an IP or CIDR (previously only CIDR strings containing `/` were checked, so a malformed plain IP such as `10.0.0.999` booted and then silently rejected every request)
 
 ### Changed
+- Minimum `verikloak` dependency raised to `~> 1.1` (from `~> 1.0`), matching the coordinated 1.1.0 core / 1.2.0 verikloak-rails release; `verikloak-rails` 1.2.0 already requires `verikloak ~> 1.1`
 - **`Verikloak::BFF::Rails::Middleware.insert_before_core` added**: inserts HeaderGuard *before* `Verikloak::Middleware`, matching the documented stack order (`[HeaderGuard] → [Verikloak::Middleware] → [App]`) and the behavior of `verikloak-rails`
 - `ForwardedToken.strip_suspicious!` and `Configuration` now share the default `X-Auth-Request-*` header list via `Constants::DEFAULT_AUTH_REQUEST_HEADERS` (previously duplicated)
 - `HeaderGuard` no longer writes the `Authorization` header twice when seeding from `token_header_priority`; the header is written once during request finalization

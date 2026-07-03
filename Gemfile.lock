@@ -4,7 +4,7 @@ PATH
     verikloak-bff (1.1.0)
       jwt (>= 2.7, < 4.0)
       rack (>= 2.2, < 4.0)
-      verikloak (~> 1.0)
+      verikloak (~> 1.1)
 
 GEM
   remote: https://rubygems.org/
