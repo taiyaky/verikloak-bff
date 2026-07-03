@@ -7,6 +7,8 @@ if ENV['SIMPLECOV']
     SimpleCov.start do
       enable_coverage :branch
       add_filter %r{^/spec/}
+      # Match verikloak core: fail the suite when line coverage drops below 90%.
+      minimum_coverage 90
     end
   rescue LoadError
     warn '[spec_helper] simplecov not available; skipping coverage'

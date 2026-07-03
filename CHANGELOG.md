@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.1] - 2026-07-03
+
+Maintenance release. No changes to the shipped gem's runtime code — it is identical to 1.1.0. The changes below are limited to CI and the test suite (none of the affected files ship in the gem).
+
+### CI
+- Add a non-docker RSpec compatibility matrix (Ruby 3.1–3.3) via `gemfiles/compat.gemfile`, verifying the gemspec's `required_ruby_version >= 3.1` on every supported minor Ruby; the docker-based job continues to cover the pinned 3.4 development Ruby
+- Forward `SIMPLECOV` into the docker RSpec job so coverage is actually collected in CI, and enforce a 90% line-coverage floor in the suite (matching verikloak core)
+
+---
+
 ## [1.1.0] - 2026-07-03
 
 Verified against verikloak 1.1.0 (core) and verikloak-rails 1.2.0.
